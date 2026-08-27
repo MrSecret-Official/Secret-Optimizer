@@ -2,7 +2,7 @@
 .SYNOPSIS
     Secret-Optimizer Comprehensive Performance, RAM & Bloatware Audit Report
 .DESCRIPTION
-    Generates a state-of-the-art HTML performance report focused on memory pressure,
+    Generates a clean, minimal HTML performance report focused on memory pressure,
     process resource consumption, helper subprocess overhead, Windows bloatware audit,
     and telemetry & background service bottlenecks.
 .AUTHOR
@@ -227,17 +227,17 @@ if ($activePowerPlan -match 'Power Saver|Balanced') { $score -= 5 }
 
 if ($score -lt 20) { $score = 25 }
 
-$grade = if ($score -ge 90) { 'A (EXCELLENT)' }
-         elseif ($score -ge 75) { 'B (GOOD - MINOR TWEAKS)' }
-         elseif ($score -ge 55) { 'C (NEEDS DEBLOAT & RAM CLEAN)' }
-         else { 'D (HEAVILY BLOATED)' }
+$grade = if ($score -ge 90) { 'A - Excellent' }
+         elseif ($score -ge 75) { 'B - Good, minor tweaks' }
+         elseif ($score -ge 55) { 'C - Needs debloat & RAM clean' }
+         else { 'D - Heavily bloated' }
 
-$gradeColor = if ($score -ge 85) { '#4ade80' } elseif ($score -ge 65) { '#fbbf24' } else { '#f87171' }
+$gradeColor = if ($score -ge 85) { '#5fbf7a' } elseif ($score -ge 65) { '#c9a94d' } else { '#c25a52' }
 
 # Estimated reclaimable RAM
 $estimatedReclaimMB = [math]::Round(($helperWSMB * 0.65) + 350, 0)
 
-Write-Host "${dimText}  [6/6] Generating rich HTML dashboard...${reset}"
+Write-Host "${dimText}  [6/6] Generating report...${reset}"
 
 # ──────────────────────────────────────────────
 # HTML TEMPLATE
@@ -248,148 +248,117 @@ $html = @"
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Secret-Optimizer Performance & Health Report - $hostname</title>
+<title>Secret-Optimizer Report - $hostname</title>
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
-
     :root {
-        --bg-main: #070a12;
-        --bg-card: rgba(18, 25, 41, 0.85);
-        --bg-card-hover: rgba(26, 36, 60, 0.95);
-        --border-card: rgba(56, 189, 248, 0.12);
-        --border-active: rgba(56, 189, 248, 0.4);
-        --text-main: #f1f5f9;
-        --text-sub: #94a3b8;
-        --text-dim: #64748b;
-        --cyan: #38bdf8;
-        --green: #4ade80;
-        --yellow: #fbbf24;
-        --red: #f87171;
-        --purple: #c084fc;
+        --bg: #101114;
+        --bg-panel: #17181c;
+        --border: #2a2b30;
+        --text: #e4e4e6;
+        --text-sub: #9a9ba1;
+        --text-dim: #6b6c72;
+        --green: #5fbf7a;
+        --yellow: #c9a94d;
+        --red: #c25a52;
+        --accent: #7c9fc9;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-        background-color: var(--bg-main);
-        background-image: 
-            radial-gradient(at 0% 0%, rgba(56, 189, 248, 0.08) 0px, transparent 50%),
-            radial-gradient(at 100% 100%, rgba(192, 132, 252, 0.06) 0px, transparent 50%);
-        color: var(--text-main);
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        line-height: 1.6;
-        padding: 30px 20px;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+        font-size: 14px;
+        line-height: 1.55;
+        padding: 40px 20px;
     }
 
     .container {
-        max-width: 1240px;
+        max-width: 1080px;
         margin: 0 auto;
     }
 
     /* HEADER */
     .header {
-        background: var(--bg-card);
-        border: 1px solid var(--border-card);
-        border-radius: 16px;
-        padding: 28px 32px;
         display: flex;
         justify-content: space-between;
-        align-items: center;
-        margin-bottom: 24px;
-        backdrop-filter: blur(12px);
-        box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-    }
-
-    .logo-container {
-        display: flex;
-        align-items: center;
-        gap: 16px;
-    }
-
-    .logo-icon {
-        width: 48px;
-        height: 48px;
-        background: linear-gradient(135deg, #0284c7, #38bdf8);
-        border-radius: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 24px;
-        box-shadow: 0 0 20px rgba(56, 189, 248, 0.35);
+        align-items: flex-start;
+        padding-bottom: 20px;
+        margin-bottom: 28px;
+        border-bottom: 1px solid var(--border);
     }
 
     .brand-title {
-        font-size: 24px;
-        font-weight: 800;
-        letter-spacing: -0.5px;
-        background: linear-gradient(90deg, #38bdf8, #818cf8);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+        font-size: 20px;
+        font-weight: 600;
+        letter-spacing: -0.2px;
     }
 
     .brand-sub {
         font-size: 13px;
         color: var(--text-sub);
+        margin-top: 4px;
     }
 
-    .header-score-card {
+    .meta-line {
+        font-size: 12px;
+        color: var(--text-dim);
+        margin-top: 10px;
+    }
+
+    .header-score {
         text-align: right;
-        background: rgba(10, 15, 26, 0.7);
-        padding: 12px 24px;
-        border-radius: 12px;
-        border: 1px solid var(--border-card);
     }
 
     .score-label {
         font-size: 11px;
         text-transform: uppercase;
         color: var(--text-dim);
-        font-weight: 700;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.4px;
     }
 
     .score-val {
-        font-size: 28px;
-        font-weight: 800;
-        font-family: 'JetBrains Mono', monospace;
+        font-size: 30px;
+        font-weight: 700;
+        font-family: Consolas, "Courier New", monospace;
+        line-height: 1.2;
+    }
+
+    .score-grade {
+        font-size: 12px;
+        margin-top: 2px;
     }
 
     /* SUMMARY GRID */
     .kpi-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-        gap: 16px;
-        margin-bottom: 24px;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 1px;
+        background: var(--border);
+        border: 1px solid var(--border);
+        margin-bottom: 28px;
     }
 
     .kpi-card {
-        background: var(--bg-card);
-        border: 1px solid var(--border-card);
-        border-radius: 14px;
-        padding: 20px;
-        backdrop-filter: blur(8px);
-        transition: transform 0.2s, border-color 0.2s;
-    }
-
-    .kpi-card:hover {
-        transform: translateY(-2px);
-        border-color: var(--border-active);
+        background: var(--bg-panel);
+        padding: 16px 18px;
     }
 
     .kpi-title {
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 600;
         color: var(--text-sub);
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.4px;
         margin-bottom: 8px;
     }
 
     .kpi-value {
-        font-size: 22px;
-        font-weight: 700;
-        font-family: 'JetBrains Mono', monospace;
-        margin-bottom: 6px;
+        font-size: 20px;
+        font-weight: 600;
+        font-family: Consolas, "Courier New", monospace;
+        margin-bottom: 4px;
     }
 
     .kpi-sub {
@@ -399,150 +368,134 @@ $html = @"
 
     /* SECTIONS */
     .section {
-        background: var(--bg-card);
-        border: 1px solid var(--border-card);
-        border-radius: 14px;
-        padding: 24px 28px;
-        margin-bottom: 24px;
-        backdrop-filter: blur(8px);
+        margin-bottom: 32px;
     }
 
     .section-title {
-        font-size: 16px;
-        font-weight: 700;
-        color: var(--text-main);
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 16px;
-        padding-bottom: 12px;
-        border-bottom: 1px solid rgba(255,255,255,0.06);
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text);
+        margin-bottom: 4px;
     }
 
-    .section-icon {
-        color: var(--cyan);
-        font-size: 18px;
+    .section-desc {
+        font-size: 12px;
+        color: var(--text-dim);
+        margin-bottom: 14px;
     }
 
     /* RAM PROGRESS BAR */
+    .progress-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: var(--text-sub);
+        margin-bottom: 6px;
+    }
+
     .progress-bar-container {
-        background: rgba(0,0,0,0.4);
-        border-radius: 10px;
-        height: 20px;
+        background: var(--bg-panel);
+        border: 1px solid var(--border);
+        height: 8px;
         width: 100%;
         overflow: hidden;
-        margin: 10px 0 16px 0;
-        border: 1px solid rgba(255,255,255,0.08);
+        margin-bottom: 20px;
     }
 
     .progress-bar-fill {
         height: 100%;
-        background: linear-gradient(90deg, #0284c7, #38bdf8);
-        border-radius: 8px;
-        transition: width 0.5s;
+        background: var(--accent);
     }
 
     /* TABLES */
     .data-table {
         width: 100%;
         border-collapse: collapse;
-        margin-top: 8px;
         font-size: 13px;
     }
 
     .data-table th {
         text-align: left;
-        padding: 10px 12px;
+        padding: 8px 10px;
         color: var(--text-dim);
         font-weight: 600;
         text-transform: uppercase;
         font-size: 11px;
-        letter-spacing: 0.5px;
-        border-bottom: 1px solid rgba(255,255,255,0.08);
+        letter-spacing: 0.4px;
+        border-bottom: 1px solid var(--border);
     }
 
     .data-table td {
-        padding: 10px 12px;
-        border-bottom: 1px solid rgba(255,255,255,0.04);
-        color: var(--text-main);
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--border);
+        color: var(--text);
     }
 
-    .data-table tr:hover td {
-        background: rgba(255,255,255,0.02);
+    .data-table tr:last-child td {
+        border-bottom: none;
     }
 
     .mono {
-        font-family: 'JetBrains Mono', monospace;
+        font-family: Consolas, "Courier New", monospace;
     }
 
-    /* BADGES */
-    .badge {
-        display: inline-block;
-        padding: 3px 8px;
-        border-radius: 6px;
-        font-size: 11px;
+    .text-dim { color: var(--text-dim); }
+    .text-sub { color: var(--text-sub); }
+
+    /* STATUS TEXT (no pill chrome, just color + label) */
+    .status {
+        font-family: Consolas, "Courier New", monospace;
+        font-size: 12px;
         font-weight: 600;
-        text-transform: uppercase;
-        font-family: 'JetBrains Mono', monospace;
     }
 
-    .badge-clean { background: rgba(74, 222, 128, 0.15); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.3); }
-    .badge-bloat { background: rgba(248, 113, 113, 0.15); color: #f87171; border: 1px solid rgba(248, 113, 113, 0.3); }
-    .badge-warn  { background: rgba(251, 191, 36, 0.15); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.3); }
-    .badge-info  { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); }
+    .status-clean { color: var(--green); }
+    .status-bloat { color: var(--red); }
+    .status-warn  { color: var(--yellow); }
+    .status-info  { color: var(--text-sub); }
 
-    /* ACTION ROADMAP */
-    .roadmap-list {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-        gap: 12px;
-        margin-top: 8px;
+    /* ACTION LIST */
+    .action-list {
+        border: 1px solid var(--border);
     }
 
-    .roadmap-item {
-        background: rgba(10, 15, 26, 0.6);
-        border: 1px solid rgba(56, 189, 248, 0.15);
-        border-radius: 10px;
-        padding: 14px 18px;
+    .action-item {
         display: flex;
-        align-items: center;
+        align-items: baseline;
         gap: 14px;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border);
     }
 
-    .roadmap-num {
-        width: 32px;
-        height: 32px;
-        border-radius: 8px;
-        background: rgba(56, 189, 248, 0.15);
-        color: var(--cyan);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: 700;
-        font-family: 'JetBrains Mono', monospace;
+    .action-item:last-child {
+        border-bottom: none;
     }
 
-    .roadmap-text {
-        font-size: 13px;
-        color: var(--text-main);
-    }
-
-    .roadmap-sub {
-        font-size: 11px;
+    .action-num {
+        font-family: Consolas, "Courier New", monospace;
         color: var(--text-dim);
+        font-size: 12px;
+        min-width: 16px;
+    }
+
+    .action-text {
+        font-size: 13px;
+        color: var(--text);
+    }
+
+    .action-sub {
+        font-size: 12px;
+        color: var(--text-dim);
+        margin-top: 2px;
     }
 
     /* FOOTER */
     .footer {
-        text-align: center;
-        padding: 24px;
+        text-align: left;
+        padding-top: 20px;
+        border-top: 1px solid var(--border);
         color: var(--text-dim);
         font-size: 12px;
-    }
-
-    .footer span {
-        color: var(--cyan);
-        font-weight: 600;
     }
 </style>
 </head>
@@ -552,17 +505,15 @@ $html = @"
 
     <!-- HEADER -->
     <div class="header">
-        <div class="logo-container">
-            <div class="logo-icon">&#9889;</div>
-            <div>
-                <div class="brand-title">Secret-Optimizer</div>
-                <div class="brand-sub">Advanced Process, Memory & Windows Bloatware Audit</div>
-            </div>
+        <div>
+            <div class="brand-title">Secret-Optimizer</div>
+            <div class="brand-sub">Process, memory & Windows bloatware audit</div>
+            <div class="meta-line">$hostname &bull; $currentUser &bull; $osName (Build $osBuild, $osArch) &bull; Uptime $uptime</div>
         </div>
-        <div class="header-score-card">
+        <div class="header-score">
             <div class="score-label">Optimization Score</div>
             <div class="score-val" style="color: $gradeColor;">$score / 100</div>
-            <div class="score-label" style="color: $gradeColor; font-size:10px;">$grade</div>
+            <div class="score-grade" style="color: $gradeColor;">$grade</div>
         </div>
     </div>
 
@@ -570,39 +521,37 @@ $html = @"
     <div class="kpi-grid">
         <div class="kpi-card">
             <div class="kpi-title">RAM Utilization</div>
-            <div class="kpi-value" style="color: $(if($ramPercent -gt 80){'#f87171'}elseif($ramPercent -gt 65){'#fbbf24'}else{'#4ade80'});">$usedRamGB GB <span style="font-size:14px;color:var(--text-dim);">/ $totalRamGB GB</span></div>
+            <div class="kpi-value" style="color: $(if($ramPercent -gt 80){'var(--red)'}elseif($ramPercent -gt 65){'var(--yellow)'}else{'var(--green)'});">$usedRamGB GB <span style="font-size:13px;color:var(--text-dim);">/ $totalRamGB GB</span></div>
             <div class="kpi-sub">$ramPercent% active load &bull; $freeRamGB GB available</div>
         </div>
 
         <div class="kpi-card">
             <div class="kpi-title">Helper Subprocesses</div>
-            <div class="kpi-value" style="color: #38bdf8;">$helperWSMB MB</div>
+            <div class="kpi-value">$helperWSMB MB</div>
             <div class="kpi-sub">$helperCount idle browser/app helper tasks</div>
         </div>
 
         <div class="kpi-card">
             <div class="kpi-title">Bloatware Detected</div>
-            <div class="kpi-value" style="color: $(if($detectedBloatCount -gt 0){'#f87171'}else{'#4ade80'});">$detectedBloatCount Apps</div>
+            <div class="kpi-value" style="color: $(if($detectedBloatCount -gt 0){'var(--red)'}else{'var(--green)'});">$detectedBloatCount apps</div>
             <div class="kpi-sub">Pre-installed promo & junk packages</div>
         </div>
 
         <div class="kpi-card">
             <div class="kpi-title">Telemetry & Adware</div>
-            <div class="kpi-value" style="color: $(if($telemetryStatus -match 'ACTIVE'){'#fbbf24'}else{'#4ade80'});">$(if($telemetryStatus -match 'ACTIVE'){'Active'}else{'Clean'})</div>
-            <div class="kpi-sub">DiagTrack & Start Menu Ads status</div>
+            <div class="kpi-value" style="color: $(if($telemetryStatus -match 'ACTIVE'){'var(--yellow)'}else{'var(--green)'});">$(if($telemetryStatus -match 'ACTIVE'){'Active'}else{'Clean'})</div>
+            <div class="kpi-sub">DiagTrack & Start Menu ads status</div>
         </div>
     </div>
 
     <!-- SECTION 1: PROCESS & RAM DIAGNOSTICS -->
     <div class="section">
-        <div class="section-title">
-            <span class="section-icon">&#128187;</span>
-            Deep Memory & Process Working Set Breakdown
-        </div>
+        <div class="section-title">Memory & process working set breakdown</div>
+        <div class="section-desc">Top 15 processes by working set. Potential reclamation via 1-Click Trim: ~$estimatedReclaimMB MB.</div>
 
-        <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text-sub); margin-bottom:4px;">
-            <span>Memory Pressure Status: <strong>$ramPercent%</strong></span>
-            <span>Potential Reclamation: <strong>~$estimatedReclaimMB MB</strong> via 1-Click Trim</span>
+        <div class="progress-row">
+            <span>Memory pressure</span>
+            <span>$ramPercent%</span>
         </div>
         <div class="progress-bar-container">
             <div class="progress-bar-fill" style="width: $ramPercent%;"></div>
@@ -612,10 +561,10 @@ $html = @"
             <thead>
                 <tr>
                     <th>PID</th>
-                    <th>Process Name</th>
-                    <th>Working Set (RAM)</th>
+                    <th>Process</th>
+                    <th>Working Set</th>
                     <th>Threads</th>
-                    <th>Status / Category</th>
+                    <th>Category</th>
                 </tr>
             </thead>
             <tbody>
@@ -623,21 +572,21 @@ $html = @"
 
 foreach ($p in $topProcesses) {
     $wsMB = [math]::Round($p.WorkingSet64 / 1MB, 1)
-    $catBadge = if ($p.ProcessName -in $protectedList) {
-        "<span class='badge badge-info'>System Core</span>"
+    $catLabel = if ($p.ProcessName -in $protectedList) {
+        "<span class='status status-info'>System core</span>"
     } elseif ($p.ProcessName -match 'chrome|edge|brave|discord|spotify|steam') {
-        "<span class='badge badge-warn'>Helper / Idle</span>"
+        "<span class='status status-warn'>Helper / idle</span>"
     } else {
-        "<span class='badge badge-clean'>User Task</span>"
+        "<span class='status status-clean'>User task</span>"
     }
 
     $html += @"
                 <tr>
-                    <td class="mono">$($p.Id)</td>
-                    <td><strong>$($p.ProcessName)</strong></td>
-                    <td class="mono" style="color:var(--cyan);">$wsMB MB</td>
-                    <td class="mono">$($p.Threads.Count)</td>
-                    <td>$catBadge</td>
+                    <td class="mono text-dim">$($p.Id)</td>
+                    <td>$($p.ProcessName)</td>
+                    <td class="mono">$wsMB MB</td>
+                    <td class="mono text-dim">$($p.Threads.Count)</td>
+                    <td>$catLabel</td>
                 </tr>
 "@
 }
@@ -649,13 +598,8 @@ $html += @"
 
     <!-- SECTION 2: WINDOWS BLOATWARE AUDIT -->
     <div class="section">
-        <div class="section-title">
-            <span class="section-icon">&#128737;</span>
-            Windows Bloatware & Sponsored Package Audit
-        </div>
-        <p style="font-size:13px; color:var(--text-sub); margin-bottom:16px;">
-            Audit of pre-installed promotional applications, games, and telemetry stubs found on this Windows installation.
-        </p>
+        <div class="section-title">Windows bloatware & sponsored package audit</div>
+        <div class="section-desc">Pre-installed promotional applications, games, and telemetry stubs found on this installation.</div>
 
         <table class="data-table">
             <thead>
@@ -663,25 +607,25 @@ $html += @"
                     <th>Application</th>
                     <th>Package Identifier</th>
                     <th>Category</th>
-                    <th>Audit Status</th>
+                    <th>Status</th>
                 </tr>
             </thead>
             <tbody>
 "@
 
 foreach ($b in $bloatResults) {
-    $statusBadge = if ($b.IsInstalled) {
-        "<span class='badge badge-bloat'>NEEDS DEBLOAT</span>"
+    $statusLabel = if ($b.IsInstalled) {
+        "<span class='status status-bloat'>Needs debloat</span>"
     } else {
-        "<span class='badge badge-clean'>CLEAN / REMOVED</span>"
+        "<span class='status status-clean'>Clean</span>"
     }
 
     $html += @"
                 <tr>
-                    <td><strong>$($b.Display)</strong></td>
-                    <td class="mono" style="color:var(--text-dim);">$($b.Name)</td>
-                    <td>$($b.Category)</td>
-                    <td>$statusBadge</td>
+                    <td>$($b.Display)</td>
+                    <td class="mono text-dim">$($b.Name)</td>
+                    <td class="text-sub">$($b.Category)</td>
+                    <td>$statusLabel</td>
                 </tr>
 "@
 }
@@ -693,44 +637,41 @@ $html += @"
 
     <!-- SECTION 3: PRIVACY & TELEMETRY AUDIT -->
     <div class="section">
-        <div class="section-title">
-            <span class="section-icon">&#128274;</span>
-            Privacy, Telemetry & Start Menu Adware Audit
-        </div>
+        <div class="section-title">Privacy, telemetry & Start Menu adware audit</div>
 
         <table class="data-table">
             <thead>
                 <tr>
                     <th>Component</th>
-                    <th>Registry / Target Policy</th>
-                    <th>Current Status</th>
+                    <th>Registry / Policy</th>
+                    <th>Status</th>
                     <th>Recommendation</th>
                 </tr>
             </thead>
             <tbody>
                 <tr>
-                    <td><strong>Windows Diagnostic Telemetry</strong></td>
-                    <td class="mono">HKLM:\...\DataCollection\AllowTelemetry</td>
-                    <td><span class="badge $(if($telemetryStatus -match 'ACTIVE'){'badge-warn'}else{'badge-clean'})">$telemetryStatus</span></td>
-                    <td style="color:var(--text-sub);">Disable via Menu Option [8]</td>
+                    <td>Windows diagnostic telemetry</td>
+                    <td class="mono text-dim">HKLM:\...\DataCollection\AllowTelemetry</td>
+                    <td><span class="status $(if($telemetryStatus -match 'ACTIVE'){'status-warn'}else{'status-clean'})">$telemetryStatus</span></td>
+                    <td class="text-sub">Disable via menu option [8]</td>
                 </tr>
                 <tr>
-                    <td><strong>Advertising ID Tracking</strong></td>
-                    <td class="mono">HKCU:\...\AdvertisingInfo\Enabled</td>
-                    <td><span class="badge $(if($advStatus -match 'ACTIVE'){'badge-warn'}else{'badge-clean'})">$advStatus</span></td>
-                    <td style="color:var(--text-sub);">Disable via Menu Option [8]</td>
+                    <td>Advertising ID tracking</td>
+                    <td class="mono text-dim">HKCU:\...\AdvertisingInfo\Enabled</td>
+                    <td><span class="status $(if($advStatus -match 'ACTIVE'){'status-warn'}else{'status-clean'})">$advStatus</span></td>
+                    <td class="text-sub">Disable via menu option [8]</td>
                 </tr>
                 <tr>
-                    <td><strong>Start Menu Promoted Apps & Ads</strong></td>
-                    <td class="mono">HKCU:\...\ContentDeliveryManager</td>
-                    <td><span class="badge $(if($startAdsStatus -match 'ACTIVE'){'badge-warn'}else{'badge-clean'})">$startAdsStatus</span></td>
-                    <td style="color:var(--text-sub);">Disable via Menu Option [8]</td>
+                    <td>Start Menu promoted apps & ads</td>
+                    <td class="mono text-dim">HKCU:\...\ContentDeliveryManager</td>
+                    <td><span class="status $(if($startAdsStatus -match 'ACTIVE'){'status-warn'}else{'status-clean'})">$startAdsStatus</span></td>
+                    <td class="text-sub">Disable via menu option [8]</td>
                 </tr>
                 <tr>
-                    <td><strong>Bing Web Search in Start Menu</strong></td>
-                    <td class="mono">HKCU:\...\Explorer\DisableSearchBoxSuggestions</td>
-                    <td><span class="badge $(if($bingSearchStatus -match 'ACTIVE'){'badge-warn'}else{'badge-clean'})">$bingSearchStatus</span></td>
-                    <td style="color:var(--text-sub);">Disable to speed up local search</td>
+                    <td>Bing web search in Start Menu</td>
+                    <td class="mono text-dim">HKCU:\...\Explorer\DisableSearchBoxSuggestions</td>
+                    <td><span class="status $(if($bingSearchStatus -match 'ACTIVE'){'status-warn'}else{'status-clean'})">$bingSearchStatus</span></td>
+                    <td class="text-sub">Disable to speed up local search</td>
                 </tr>
             </tbody>
         </table>
@@ -738,21 +679,15 @@ $html += @"
 
     <!-- SECTION 4: BACKGROUND SERVICES & POWER OPTIMIZATION -->
     <div class="section">
-        <div class="section-title">
-            <span class="section-icon">&#9881;</span>
-            Background Services & Power Profile Audit
-        </div>
-
-        <div style="margin-bottom:16px; font-size:13px; color:var(--text-sub);">
-            Active Power Scheme: <strong style="color:var(--cyan);">$activePowerPlan</strong> &bull; Host: <strong>$hostname</strong> &bull; Uptime: <strong>$uptime</strong>
-        </div>
+        <div class="section-title">Background services & power profile audit</div>
+        <div class="section-desc">Active power scheme: <strong>$activePowerPlan</strong></div>
 
         <table class="data-table">
             <thead>
                 <tr>
-                    <th>Service Name</th>
+                    <th>Service</th>
                     <th>Description</th>
-                    <th>Current State</th>
+                    <th>State</th>
                     <th>Startup Type</th>
                 </tr>
             </thead>
@@ -760,18 +695,18 @@ $html += @"
 "@
 
 foreach ($s in $servicesResults) {
-    $stateBadge = if ($s.Status -eq "Running") {
-        if ($s.IsHeavy) { "<span class='badge badge-warn'>RUNNING (TELEMETRY)</span>" } else { "<span class='badge badge-info'>RUNNING</span>" }
+    $stateLabel = if ($s.Status -eq "Running") {
+        if ($s.IsHeavy) { "<span class='status status-warn'>Running (telemetry)</span>" } else { "<span class='status status-info'>Running</span>" }
     } else {
-        "<span class='badge badge-clean'>STOPPED</span>"
+        "<span class='status status-clean'>Stopped</span>"
     }
 
     $html += @"
                 <tr>
-                    <td class="mono"><strong>$($s.Name)</strong></td>
-                    <td>$($s.Display)</td>
-                    <td>$stateBadge</td>
-                    <td class="mono">$($s.StartType)</td>
+                    <td class="mono">$($s.Name)</td>
+                    <td class="text-sub">$($s.Display)</td>
+                    <td>$stateLabel</td>
+                    <td class="mono text-dim">$($s.StartType)</td>
                 </tr>
 "@
 }
@@ -783,41 +718,38 @@ $html += @"
 
     <!-- SECTION 5: SECRET-OPTIMIZER ACTION ROADMAP -->
     <div class="section">
-        <div class="section-title">
-            <span class="section-icon">&#128640;</span>
-            Recommended 1-Click Secret-Optimizer Actions
-        </div>
+        <div class="section-title">Recommended actions</div>
 
-        <div class="roadmap-list">
-            <div class="roadmap-item">
-                <div class="roadmap-num">1</div>
+        <div class="action-list">
+            <div class="action-item">
+                <div class="action-num">1</div>
                 <div>
-                    <div class="roadmap-text">Execute 1-Click Deep RAM Optimizer</div>
-                    <div class="roadmap-sub">Reclaim ~$estimatedReclaimMB MB RAM (Menu Option [1])</div>
+                    <div class="action-text">Run 1-Click Deep RAM Optimizer</div>
+                    <div class="action-sub">Reclaim ~$estimatedReclaimMB MB RAM (menu option [1])</div>
                 </div>
             </div>
 
-            <div class="roadmap-item">
-                <div class="roadmap-num">2</div>
+            <div class="action-item">
+                <div class="action-num">2</div>
                 <div>
-                    <div class="roadmap-text">Run Safe 1-Click Bloatware Debloat</div>
-                    <div class="roadmap-sub">Purge $detectedBloatCount detected promo packages (Menu Option [6])</div>
+                    <div class="action-text">Run Safe 1-Click Bloatware Debloat</div>
+                    <div class="action-sub">Purge $detectedBloatCount detected promo packages (menu option [6])</div>
                 </div>
             </div>
 
-            <div class="roadmap-item">
-                <div class="roadmap-num">3</div>
+            <div class="action-item">
+                <div class="action-num">3</div>
                 <div>
-                    <div class="roadmap-text">Apply Privacy & Telemetry Purge</div>
-                    <div class="roadmap-sub">Turn off Start Menu ads & tracking (Menu Option [8])</div>
+                    <div class="action-text">Apply Privacy & Telemetry Purge</div>
+                    <div class="action-sub">Turn off Start Menu ads & tracking (menu option [8])</div>
                 </div>
             </div>
 
-            <div class="roadmap-item">
-                <div class="roadmap-num">4</div>
+            <div class="action-item">
+                <div class="action-num">4</div>
                 <div>
-                    <div class="roadmap-text">Enable Continuous Smart RAM Guard</div>
-                    <div class="roadmap-sub">Prevent background memory buildup (Menu Option [5])</div>
+                    <div class="action-text">Enable Continuous Smart RAM Guard</div>
+                    <div class="action-sub">Prevent background memory buildup (menu option [5])</div>
                 </div>
             </div>
         </div>
@@ -825,8 +757,8 @@ $html += @"
 
     <!-- FOOTER -->
     <div class="footer">
-        Generated by <span>Secret-Optimizer</span> &bull; mrsecret_official &bull; All performance diagnostics evaluated 100% locally
-        <div style="margin-top:4px;">Report Date: $reportDate</div>
+        Generated by Secret-Optimizer &bull; mrsecret_official &bull; All diagnostics evaluated locally
+        <div style="margin-top:4px;">Report date: $reportDate</div>
     </div>
 
 </div>

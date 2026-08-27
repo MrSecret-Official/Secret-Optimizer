@@ -28,7 +28,13 @@ This tool is for **PERSONAL USE ONLY** on your own devices.
 - **Gaming & Heavy Workload Turbo Mode**: 1-click optimization that boosts foreground game CPU priority to `HIGH`, sets background updaters/helpers to `BELOW NORMAL`, and activates High/Ultimate Performance power plans.
 - **Continuous Smart RAM & Process Guard**: Background daemon loop that monitors RAM usage every 5 seconds and auto-trims background working sets whenever load exceeds the configured threshold (default 75%).
 
-### 🛡️ 2. Controlled & Safe Windows Bloatware Remover
+### 🧠 2. Smart Windows Junk & RAM-Hog Detector
+- **Live process signature scan**: Checks running processes against known Windows-native bloat/telemetry signatures (Widgets, Xbox Game Bar overlay, Phone Link, Microsoft Compatibility Telemetry, legacy Cortana, OneDrive, Edge background mode) and reports how much RAM each is actually holding right now — only flags what it detects running, not just installed.
+- **1-Click disable per item**: Each signature has a real, reversible disable path (registry policy, scheduled task disable, or AppX uninstall) — not just a process kill that respawns on next login.
+- **Safe vs. review-first tiers**: Items Windows starts on its own (Widgets, Game Bar, Phone Link, Compatibility Telemetry, Cortana) are marked safe to bulk-disable; things you may actively use (OneDrive sync, Edge background mode) require picking them individually.
+- **Restore point before every change**, same as the debloater below.
+
+### 🛡️ 3. Controlled & Safe Windows Bloatware Remover
 - **Automatic System Restore Point**: Generates a rollback checkpoint (`Checkpoint-Computer`) before removing any packages or modifying settings.
 - **Safe 1-Click Recommended Debloat**: Eliminates pre-installed promotional bloatware, sponsored junk, adware stubs (`TikTok`, `Candy Crush`, `Disney+`, `Spotify stub`, `Netflix stub`, `Feedback Hub`, `Bing Weather/News/Finance/Sports`, `Clipchamp`, `Solitaire`, `Tips`, `Get Help`, `Mixed Reality`, etc.).
 - **Provisioned System-wide Cleanup**: Removes packages from both current user profile (`Remove-AppxPackage`) AND provisioned system image (`Remove-AppxProvisionedPackage -Online`) so apps never reinstall after Windows updates or for new user profiles.
@@ -37,7 +43,7 @@ This tool is for **PERSONAL USE ONLY** on your own devices.
 - **Windows Non-Essential Background Services Optimizer**: Safe tuning presets to disable `DiagTrack`, `dmwappushservice`, `MapsBroker`, `RemoteRegistry`, and `RetailDemo`.
 - **Default Apps & Package Recovery Center**: 1-click re-registration commands to restore built-in Microsoft Store applications if ever needed.
 
-### 📊 3. System Health & Performance Diagnostics
+### 📊 4. System Health & Performance Diagnostics
 - **Comprehensive HTML Performance Report**: Generates a rich, dark-mode dashboard showing CPU, RAM, storage volumes, services, and hardware metrics.
 - **System Restore Point Manager**: List, create, or roll back to any system restore point.
 

@@ -857,6 +857,180 @@ function Assistant-InteractiveAppxManager {
 }
 
 # ===================================================================
+# MODULE 7B: SMART WINDOWS JUNK & RAM-HOG DETECTOR
+# ===================================================================
+# Signatures of known Windows-native background bloat/telemetry processes.
+# "Safe" items are launched by Windows itself and have a documented, reversible
+# disable path. "Review first" items are things users often actively rely on
+# (OneDrive sync, Edge background mode), so they require an explicit pick.
+$smartJunkCatalog = @(
+    [PSCustomObject]@{ Id = 'Widgets';   Display = 'Windows Widgets / News & Interests';      Processes = @('Widgets','WidgetService');                          Category = 'Windows Bloat';       Safe = $true }
+    [PSCustomObject]@{ Id = 'GameBar';   Display = 'Xbox Game Bar overlay & presence writer';  Processes = @('GameBar','GameBarFTServer','GameBarPresenceWriter'); Category = 'Windows Bloat';       Safe = $true }
+    [PSCustomObject]@{ Id = 'YourPhone'; Display = 'Phone Link / Your Phone companion app';    Processes = @('YourPhone','PhoneExperienceHost');                  Category = 'Windows Bloat';       Safe = $true }
+    [PSCustomObject]@{ Id = 'CompatTel'; Display = 'Microsoft Compatibility Telemetry';        Processes = @('CompatTelRunner','DeviceCensus');                   Category = 'Windows Telemetry';   Safe = $true }
+    [PSCustomObject]@{ Id = 'Cortana';   Display = 'Cortana (legacy voice assistant)';         Processes = @('Cortana');                                          Category = 'Windows Bloat';       Safe = $true }
+    [PSCustomObject]@{ Id = 'OneDrive';  Display = 'OneDrive background sync client';          Processes = @('OneDrive');                                         Category = 'Optional App';        Safe = $false }
+    [PSCustomObject]@{ Id = 'EdgeBg';    Display = 'Edge background & startup-boost behavior'; Processes = @('msedge');                                           Category = 'Background Behavior'; Safe = $false }
+)
+
+function Invoke-SmartJunkDisable([string]$id) {
+    switch ($id) {
+        'Widgets' {
+            Get-Process -Name 'Widgets','WidgetService' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            $k1 = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
+            if (-not (Test-Path $k1)) { New-Item -Path $k1 -Force | Out-Null }
+            Set-ItemProperty -Path $k1 -Name "TaskbarDa" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+            $k2 = "HKCU:\Software\Policies\Microsoft\Dsh"
+            if (-not (Test-Path $k2)) { New-Item -Path $k2 -Force | Out-Null }
+            Set-ItemProperty -Path $k2 -Name "AllowNewsAndInterests" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+        }
+        'GameBar' {
+            Get-Process -Name 'GameBar','GameBarFTServer','GameBarPresenceWriter' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            $k1 = "HKCU:\System\GameConfigStore"
+            if (-not (Test-Path $k1)) { New-Item -Path $k1 -Force | Out-Null }
+            Set-ItemProperty -Path $k1 -Name "GameDVR_Enabled" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+            $k2 = "HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR"
+            if (-not (Test-Path $k2)) { New-Item -Path $k2 -Force | Out-Null }
+            Set-ItemProperty -Path $k2 -Name "AppCaptureEnabled" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+        }
+        'YourPhone' {
+            Get-Process -Name 'YourPhone','PhoneExperienceHost' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            Get-AppxPackage -Name '*Microsoft.YourPhone*' -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue
+            Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object DisplayName -like '*YourPhone*' | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Out-Null
+        }
+        'CompatTel' {
+            Get-Process -Name 'CompatTelRunner','DeviceCensus' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            $taskTargets = @(
+                @{ Path = '\Microsoft\Windows\Application Experience\'; Name = 'Microsoft Compatibility Appraiser' }
+                @{ Path = '\Microsoft\Windows\Application Experience\'; Name = 'ProgramDataUpdater' }
+                @{ Path = '\Microsoft\Windows\Customer Experience Improvement Program\'; Name = 'Consolidator' }
+                @{ Path = '\Microsoft\Windows\Customer Experience Improvement Program\'; Name = 'KernelCeipTask' }
+                @{ Path = '\Microsoft\Windows\Customer Experience Improvement Program\'; Name = 'UsbCeip' }
+                @{ Path = '\Microsoft\Windows\Autochk\'; Name = 'Proxy' }
+                @{ Path = '\Microsoft\Windows\DiskDiagnostic\'; Name = 'Microsoft-Windows-DiskDiagnosticDataCollector' }
+            )
+            foreach ($t in $taskTargets) {
+                try { Disable-ScheduledTask -TaskPath $t.Path -TaskName $t.Name -ErrorAction SilentlyContinue | Out-Null } catch {}
+            }
+        }
+        'Cortana' {
+            Get-Process -Name 'Cortana' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            Get-AppxPackage -Name '*549981C3F5F10*' -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue
+            Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object DisplayName -like '*549981C3F5F10*' | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Out-Null
+        }
+        'OneDrive' {
+            Get-Process -Name 'OneDrive' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "OneDrive" -ErrorAction SilentlyContinue
+        }
+        'EdgeBg' {
+            $k = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
+            if (-not (Test-Path $k)) { New-Item -Path $k -Force | Out-Null }
+            Set-ItemProperty -Path $k -Name "StartupBoostEnabled" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+            Set-ItemProperty -Path $k -Name "BackgroundModeEnabled" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Assistant-SmartJunkDetector {
+    Invoke-AssistantHeader "SMART WINDOWS JUNK & RAM-HOG DETECTOR" "Scans running processes for known Windows bloat/telemetry tasks and lets you disable what it finds."
+
+    Write-Host "${creamyCyan}[*] Scanning running processes against known Windows junk signatures...${reset}"
+    Write-Host ''
+
+    $detected = @()
+    foreach ($item in $smartJunkCatalog) {
+        $matchedProcs = Get-Process -Name $item.Processes -ErrorAction SilentlyContinue
+        if ($matchedProcs) {
+            $wsBytes = ($matchedProcs | Measure-Object -Property WorkingSet64 -Sum).Sum
+            $wsMB = [math]::Round($wsBytes / 1MB, 1)
+            # Skip flagging Edge background mode unless it's clearly idle background bloat,
+            # not an actively open browsing session.
+            if ($item.Id -eq 'EdgeBg' -and $wsMB -lt 250) { continue }
+            $detected += [PSCustomObject]@{
+                Id       = $item.Id
+                Display  = $item.Display
+                Category = $item.Category
+                Safe     = $item.Safe
+                RamMB    = $wsMB
+                Count    = $matchedProcs.Count
+            }
+        }
+    }
+
+    if ($detected.Count -eq 0) {
+        Write-Host "${creamyGreen}[CLEAN] No known Windows junk/RAM-hog processes currently running.${reset}"
+        Write-Host ''
+        Write-Host 'Press Enter to return to main menu...'
+        [void][Console]::ReadLine()
+        return
+    }
+
+    $detected = $detected | Sort-Object RamMB -Descending
+    $totalMB = [math]::Round(($detected | Measure-Object -Property RamMB -Sum).Sum, 1)
+
+    Write-Host "${creamyYellow}Detected $($detected.Count) known junk/bloat item(s) holding ~${creamyCyan}$totalMB MB${creamyYellow} RAM:${reset}"
+    Write-Host ''
+    Write-Host "  {0,-5} {1,-46} {2,-20} {3,10} {4}" -f "NUM", "ITEM", "CATEGORY", "RAM", "TYPE"
+    Write-Host "  ---------------------------------------------------------------------------------------"
+    $idx = 1
+    foreach ($d in $detected) {
+        $typeTag = if ($d.Safe) { "${creamyGreen}[SAFE TO DISABLE]${reset}" } else { "${creamyYellow}[REVIEW FIRST]${reset}" }
+        Write-Host ("  [{0,2}] {1,-46} {2,-20} {3,8} MB  {4}" -f $idx, $d.Display, $d.Category, $d.RamMB, $typeTag)
+        $idx++
+    }
+
+    Write-Host ''
+    Write-Host "${dimText}[REVIEW FIRST] items (OneDrive sync, Edge background mode) may be things you actively use - confirm individually.${reset}"
+    Write-Host ''
+    Write-Host "Enter numbers to disable (e.g. 1,3), 'ALL_SAFE' for all [SAFE TO DISABLE] items, or 0 to cancel:"
+    $sel = Read-Host "Selection"
+
+    if ($sel -match '^[0]$' -or -not $sel) { return }
+
+    $toDisable = @()
+    if ($sel -match '^ALL_SAFE$') {
+        $toDisable = $detected | Where-Object { $_.Safe }
+    } else {
+        $parts = $sel -split ','
+        foreach ($pRaw in $parts) {
+            $pTrim = $pRaw.Trim()
+            if ($pTrim -match '^\d+$') {
+                $n = [int]$pTrim
+                if ($n -ge 1 -and $n -le $detected.Count) { $toDisable += $detected[$n - 1] }
+            }
+        }
+    }
+
+    $toDisable = $toDisable | Select-Object -Unique
+    if ($toDisable.Count -eq 0) {
+        Write-Host "${creamyYellow}[INFO] Nothing selected.${reset}"
+        Start-Sleep -Seconds 1
+        return
+    }
+
+    Write-Host ''
+    Create-SafeRestorePoint
+    Write-Host ''
+
+    foreach ($td in $toDisable) {
+        Write-Host "${creamyCyan}[*] Disabling: $($td.Display)...${reset}" -NoNewline
+        try {
+            Invoke-SmartJunkDisable -id $td.Id
+            Write-Host " ${creamyGreen}[DISABLED]${reset} (freed ~$($td.RamMB) MB)"
+            Write-AssistantLog "SmartJunkDetector" "SUCCESS" "Disabled $($td.Id) (~$($td.RamMB) MB)"
+        } catch {
+            Write-Host " ${creamyRed}[FAILED]${reset}"
+            Write-AssistantLog "SmartJunkDetector" "FAILED" "$($td.Id): $($_.Exception.Message)"
+        }
+    }
+
+    Write-Host ''
+    Write-Host "${creamyGreen}[OK] Smart junk cleanup complete.${reset}"
+    Write-Host 'Press Enter to return to main menu...'
+    [void][Console]::ReadLine()
+}
+
+# ===================================================================
 # MODULE 8: TELEMETRY & START MENU ADS PURGE
 # ===================================================================
 function Assistant-ApplyTelemetryRegistry {
@@ -1147,6 +1321,7 @@ while ($true) {
     Write-Host "  ${creamyYellow}--- CONTROLLED WINDOWS DEBLOATER ---${reset}"
     Write-Host "  ${creamyGreen}[6] Safe 1-Click Recommended Debloat (Sponsored Apps, Junk Games, Stubs & Promo Items)${reset}"
     Write-Host "  ${accentBlue}[7] Controlled Custom AppX Package Manager (Granular Selection, Search & Uninstall)${reset}"
+    Write-Host "  ${creamyGreen}[S] Smart Windows Junk & RAM-Hog Detector (Auto-detect & disable background bloat)${reset}"
     Write-Host "  ${accentBlue}[8] Windows Telemetry, Diagnostic Tracking & Start Menu Ads Purge (Registry Optimization)${reset}"
     Write-Host "  ${accentBlue}[9] Windows Non-Essential Background Services Optimizer (Safe / Gaming Presets)${reset}"
     Write-Host "  ${accentBlue}[R] Default Apps & Package Recovery Center (1-Click Reinstall & Restore Guide)${reset}"
@@ -1159,7 +1334,7 @@ while ($true) {
     Write-Host ''
     Write-Host '============================================================================================='
     Write-Host ''
-    $choice = Read-Host "Select an option (1-9, R, H, P, 0, X)"
+    $choice = Read-Host "Select an option (1-9, S, R, H, P, 0, X)"
 
     switch ($choice.Trim()) {
         '1' { Assistant-RamOptimizer }
@@ -1169,6 +1344,7 @@ while ($true) {
         '5' { Assistant-ContinuousGuard }
         '6' { Assistant-Debloat }
         '7' { Assistant-InteractiveAppxManager }
+        { $_ -in 'S','s' } { Assistant-SmartJunkDetector }
         '8' { Assistant-TelemetryPurge }
         '9' { Assistant-ServicesOptimizer }
         { $_ -in 'R','r' } { Assistant-PackageRecovery }
