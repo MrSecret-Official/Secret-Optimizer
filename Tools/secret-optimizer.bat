@@ -111,6 +111,30 @@ function Show-Banner {
     Write-Host ''
 }
 
+# Check for updates in background (online mode)
+$updateNotice = $null
+$versionFile = "$installDir\.version"
+if (-not (Test-Path $versionFile)) { $versionFile = "$scriptDir\.version" }
+$localSha = ''
+if (Test-Path $versionFile) {
+    $localSha = (Get-Content $versionFile -Raw -ErrorAction SilentlyContinue).Trim()
+}
+
+if ($localSha) {
+    try {
+        $h = @{
+            'Accept'     = 'application/vnd.github.v3+json'
+            'User-Agent' = 'SecretOptimizer-Client'
+        }
+        $repoApi = 'https://api.github.com/repos/MrSecret-Official/Secret-Optimizer'
+        $commit = Invoke-RestMethod -Uri "$repoApi/commits/main" -Headers $h -Method Get -TimeoutSec 4 -ErrorAction SilentlyContinue
+        if ($commit -and $commit.sha -and ($commit.sha -ne $localSha)) {
+            $remoteShort = $commit.sha.Substring(0, 7)
+            $updateNotice = "[UPDATE] A new version ($remoteShort) is available on GitHub. Run Optimizer_Setup.bat to upgrade."
+        }
+    } catch {}
+}
+
 $currentUser = $env:USERNAME
 
 # Protected processes that should NEVER be killed or aggressively disturbed
@@ -1101,6 +1125,10 @@ function Assistant-ViewLogs {
 while ($true) {
     Clear-Host
     Show-Banner
+    if ($updateNotice) {
+        Write-Host "${creamyYellow}$updateNotice${reset}"
+        Write-Host ''
+    }
 
     $mem = Get-SystemMemoryStats
     Write-Host " User: ${creamyCyan}$currentUser${reset} ${creamyGreen}[ADMIN]${reset} | Host: ${creamyCyan}$env:COMPUTERNAME${reset} | Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm')"

@@ -3,7 +3,7 @@
 setlocal EnableDelayedExpansion
 title Optimizer_Setup - Secret-Optimizer Installer
 color 0B
-mode con: cols=105 lines=50 >nul 2>&1
+mode con: cols=105 lines=52 >nul 2>&1
 
 :: Auto-elevate to Administrator if not already elevated
 net session >nul 2>&1
@@ -68,7 +68,7 @@ function Show-Banner {
 }
 
 # -------------------------------------------------------------
-# PATHS
+# PATHS & GITHUB CONFIGURATION
 # -------------------------------------------------------------
 $headers = @{
     'Accept'     = 'application/vnd.github.v3+json'
@@ -82,6 +82,8 @@ $packagesDir = "$installDir\packages"
 $versionFile = "$installDir\.version"
 $mainBat = "$toolsDir\secret-optimizer.bat"
 $rootLauncher = "$installDir\secret-optimizer.bat"
+$repoApi = 'https://api.github.com/repos/MrSecret-Official/Secret-Optimizer'
+$repoWeb = 'https://github.com/MrSecret-Official/Secret-Optimizer'
 $desktop = [Environment]::GetFolderPath('Desktop')
 $shortcutPath = "$desktop\Secret-Optimizer.lnk"
 
@@ -135,17 +137,19 @@ Write-Host '====================================================================
 Write-Host '                         SECRET-OPTIMIZER INSTALLATION WIZARD'
 Write-Host '============================================================================================='
 Write-Host ''
-Write-Host "${dimText}This installer deploys Secret-Optimizer to your system:${reset}"
+Write-Host "${dimText}Before anything is downloaded or changed, here is exactly what this installer does:${reset}"
 Write-Host ''
-Write-Host "${dimText}  - Functions: Intelligent RAM & process optimization, helper sleeping, gaming boost,${reset}"
-Write-Host "${dimText}    controlled bloatware removal, telemetry & ads purge, and performance tuning.${reset}"
+Write-Host "${dimText}  - Network activity: checks and downloads source files from the public repository:${reset}"
+Write-Host "    ${creamyCyan}$repoWeb${reset}"
+Write-Host "${dimText}    (No analytics, no personal data, no tracking of any kind).${reset}"
+Write-Host "${dimText}  - Functions: Intelligent RAM cleaner, process booster, helper freezer, gaming turbo,${reset}"
+Write-Host "${dimText}    controlled Windows bloatware remover, telemetry purge, and services optimizer.${reset}"
 Write-Host "${dimText}  - Install location: ${reset}${creamyCyan}$installDir${reset}"
-Write-Host "${dimText}    (added to your user PATH; desktop shortcut: Secret-Optimizer.lnk).${reset}"
-Write-Host "${dimText}  - Local & Secure: 100% local scripts. No tracking, no external telemetry.${reset}"
+Write-Host "${dimText}    (added to user PATH; desktop shortcut is created: Secret-Optimizer.lnk).${reset}"
 Write-Host ''
 Write-Host '============================================================================================='
 Write-Host ''
-Write-Host "Proceed with Secret-Optimizer setup? (Y/N)"
+Write-Host "Proceed with Secret-Optimizer setup and download? (Y/N)"
 Write-Host "${dimText}  N = Cancel (removes previous versions if installed).${reset}"
 Write-Host ''
 $consent = Read-Host "Your choice"
@@ -159,14 +163,99 @@ if ($consent -notmatch '^[YySs]') {
 }
 
 # -------------------------------------------------------------
-# STEP 2: SETUP DIRECTORIES & LOCAL DEPLOYMENT
+# STEP 2: ANTIVIRUS DETECTION & WHITELIST NOTICE
 # -------------------------------------------------------------
-Write-Host ''
-Write-Host "${creamyCyan}[*] Preparing local installation directory...${reset}"
+function Get-DetectedAntivirus {
+    $results = @()
+    try {
+        $wmi = Get-CimInstance -Namespace 'root/SecurityCenter2' -ClassName 'AntiVirusProduct' -ErrorAction Stop
+        foreach ($item in $wmi) {
+            $hex = ([int]$item.productState).ToString('X6')
+            $rtByte = if ($hex.Length -ge 4) { $hex.Substring(2,2) } else { '00' }
+            $isActive = ($rtByte -in @('10', '11'))
+            $results += [PSCustomObject]@{
+                Name     = $item.displayName
+                IsActive = $isActive
+                Path     = $item.pathToSignedProductExe
+            }
+        }
+    } catch {}
 
+    if ($results.Count -eq 0) {
+        $procMap = [ordered]@{
+            'MsMpEng'     = 'Windows Defender'
+            'AvastSvc'    = 'Avast Antivirus'
+            'AvgSvc'      = 'AVG Antivirus'
+            'avp'         = 'Kaspersky'
+            'vsserv'      = 'Bitdefender'
+            'ccSvcHst'    = 'Norton / Symantec'
+            'mcshield'    = 'McAfee'
+            'MBAMService' = 'Malwarebytes'
+            'ekrn'        = 'ESET Security'
+            'SophosEDR'   = 'Sophos'
+        }
+        foreach ($p in $procMap.Keys) {
+            if (Get-Process -Name $p -ErrorAction SilentlyContinue) {
+                $results += [PSCustomObject]@{
+                    Name     = $procMap[$p]
+                    IsActive = $true
+                    Path     = ''
+                }
+            }
+        }
+    }
+    return $results
+}
+
+Clear-Host
+Show-Banner
+Write-Host '============================================================================================='
+Write-Host '                         ANTIVIRUS / SECURITY SOFTWARE NOTICE'
+Write-Host '============================================================================================='
+Write-Host ''
+Write-Host "${creamyYellow}[NOTE] Diagnostic & optimization scripts may occasionally trigger antivirus warnings.${reset}"
+Write-Host ''
+
+# Ensure target directories exist
 if (-not (Test-Path $installDir)) { New-Item -ItemType Directory -Path $installDir -Force | Out-Null }
 if (-not (Test-Path $toolsDir)) { New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null }
+if (-not (Test-Path $packagesDir)) { New-Item -ItemType Directory -Path $packagesDir -Force | Out-Null }
 if (-not (Test-Path "$installDir\logs")) { New-Item -ItemType Directory -Path "$installDir\logs" -Force | Out-Null }
+
+$detectedAVs = Get-DetectedAntivirus
+Write-Host "${creamyCyan}Detected Security Engines on this PC:${reset}"
+if ($detectedAVs.Count -gt 0) {
+    foreach ($av in $detectedAVs) {
+        $statusBadge = if ($av.IsActive) { "${creamyGreen}[ACTIVE]${reset}" } else { "${dimText}[INACTIVE]${reset}" }
+        Write-Host "  * $($av.Name) $statusBadge"
+    }
+} else {
+    Write-Host "  * Windows Defender ${creamyGreen}[ACTIVE]${reset}"
+}
+Write-Host ''
+Write-Host "${creamyCyan}Installation Directory to Exclude (if needed):${reset}"
+Write-Host "  ${creamyGreen}$installDir${reset}"
+Write-Host ''
+Write-Host '============================================================================================='
+Write-Host ''
+Write-Host 'Press Enter to continue with setup...'
+[void][Console]::ReadLine()
+
+# -------------------------------------------------------------
+# STEP 3: CHECK REPOSITORY VERSION (GITHUB API)
+# -------------------------------------------------------------
+Write-Host ''
+Write-Host "${creamyCyan}Checking GitHub repository version ($repoWeb)...${reset}"
+$remoteSha = $null
+try {
+    $commitInfo = Invoke-RestMethod -Uri "$repoApi/commits/main" -Headers $headers -Method Get -TimeoutSec 10 -ErrorAction SilentlyContinue
+    if ($commitInfo -and $commitInfo.sha) {
+        $remoteSha = $commitInfo.sha
+    }
+} catch {}
+
+$localSha = ''
+if (Test-Path $versionFile) { $localSha = (Get-Content $versionFile -Raw -ErrorAction SilentlyContinue).Trim() }
 
 $localScriptRoot = if ($env:OPT_SOURCE_DIR -and (Test-Path $env:OPT_SOURCE_DIR)) {
     $env:OPT_SOURCE_DIR
@@ -178,21 +267,77 @@ $localScriptRoot = if ($env:OPT_SOURCE_DIR -and (Test-Path $env:OPT_SOURCE_DIR))
     (Get-Location).Path
 }
 
-# Copy files from current project folder to installDir if different
-if ($localScriptRoot -and (Test-Path "$localScriptRoot\Tools\secret-optimizer.bat")) {
+$hasLocalFiles = ($localScriptRoot -and (Test-Path "$localScriptRoot\Tools\secret-optimizer.bat"))
+$needsDownload = ($null -ne $remoteSha -and $localSha -ne $remoteSha) -or (-not (Test-Path $mainBat))
+
+if ($needsDownload -and $remoteSha) {
+    if ($localSha -eq '') {
+        Write-Host "${creamyGreen}[INFO] Components ready for installation from GitHub ($($remoteSha.Substring(0,7))).${reset}"
+    } else {
+        Write-Host "${creamyGreen}[INFO] Update available on GitHub ($($remoteSha.Substring(0,7))).${reset}"
+    }
+} elseif (-not $needsDownload) {
+    Write-Host "${creamyGreen}[INFO] Secret-Optimizer is up to date ($($localSha.Substring(0,7))).${reset}"
+}
+
+# -------------------------------------------------------------
+# STEP 4: DOWNLOAD / SYNC COMPONENTS
+# -------------------------------------------------------------
+Write-Host ''
+$deployedSuccessfully = $false
+
+# 1. Try GitHub Download if update needed
+if ($needsDownload -and $remoteSha) {
+    Write-Host "${creamyGreen}[DOWNLOAD] Fetching latest release from GitHub...${reset}"
+    $targetZip = "$packagesDir\SecretOptimizer_Package.zip"
+    $targetExtract = "$packagesDir\SecretOptimizer_Extract"
+    try {
+        Invoke-RestMethod -Uri "$repoApi/zipball/main" -Headers $headers -OutFile $targetZip -TimeoutSec 30
+        if (Test-Path $targetExtract) { Remove-Item $targetExtract -Recurse -Force -ErrorAction SilentlyContinue }
+        Expand-Archive -Path $targetZip -DestinationPath $targetExtract -Force
+        $extractedRoot = (Get-ChildItem -Path $targetExtract -Directory | Select-Object -First 1).FullName
+        if ($extractedRoot -and (Test-Path "$extractedRoot\Tools")) {
+            Copy-Item -Path "$extractedRoot\Tools\*" -Destination $toolsDir -Recurse -Force
+            if (Test-Path "$extractedRoot\README.md") { Copy-Item -Path "$extractedRoot\README.md" -Destination $installDir -Force }
+            if (Test-Path "$extractedRoot\LICENSE") { Copy-Item -Path "$extractedRoot\LICENSE" -Destination $installDir -Force }
+            Set-Content -Path $versionFile -Value $remoteSha -Force
+            Write-Host "${creamyGreen}[OK] Package successfully downloaded and deployed from GitHub.${reset}"
+            $deployedSuccessfully = $true
+        }
+    } catch {
+        Write-Host "${creamyYellow}[WARN] GitHub download failed: $($_.Exception.Message)${reset}"
+    } finally {
+        if (Test-Path $targetZip) { Remove-Item $targetZip -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $targetExtract) { Remove-Item $targetExtract -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+}
+
+# 2. Synchronize Local Workspace Files (Guarantee local availability)
+if ($hasLocalFiles) {
+    Write-Host "${creamyCyan}[*] Synchronizing local component files...${reset}"
     Copy-Item -Path "$localScriptRoot\Tools\*" -Destination $toolsDir -Recurse -Force -ErrorAction SilentlyContinue
     if (Test-Path "$localScriptRoot\README.md") { Copy-Item -Path "$localScriptRoot\README.md" -Destination $installDir -Force -ErrorAction SilentlyContinue }
     if (Test-Path "$localScriptRoot\LICENSE") { Copy-Item -Path "$localScriptRoot\LICENSE" -Destination $installDir -Force -ErrorAction SilentlyContinue }
+    if ($remoteSha) { Set-Content -Path $versionFile -Value $remoteSha -Force -ErrorAction SilentlyContinue }
+    $deployedSuccessfully = $true
+    Write-Host "${creamyGreen}[OK] Local component files synchronized.${reset}"
 }
 
-# Create root launcher forwarder
+if (-not (Test-Path $mainBat)) {
+    Write-Host "${creamyRed}[ERROR] secret-optimizer.bat could not be located or installed.${reset}"
+    Write-Host 'Press Enter to exit...'
+    [void][Console]::ReadLine()
+    exit 1
+}
+
+# Root launcher forwarder
 $rootForwarderContent = "@echo off`r`nsetlocal`r`nset `"SD=%~dp0`"`r`ncall `"%SD%Tools\secret-optimizer.bat`" %*`r`nexit /b %errorlevel%"
 Set-Content -Path $rootLauncher -Value $rootForwarderContent -Force
 
 # Register in User PATH
 $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 $pArray = @($installDir, $toolsDir)
-$pathList = if ($userPath) { $userPath -split ';' | Where-Object { $_ -ne '' -and $_ -notlike "*\Tools\Tools" } } else { @() }
+$pathList = if ($userPath) { $userPath -split ';' | Where-Object { $_ -ne '' } } else { @() }
 $pathUpdated = $false
 foreach ($p in $pArray) {
     if ($pathList -notcontains $p) { $pathList += $p; $pathUpdated = $true }
@@ -221,15 +366,15 @@ try {
 $legacyShortcut = "$desktop\Secret-Tools.lnk"
 if (Test-Path $legacyShortcut) { Remove-Item $legacyShortcut -Force -ErrorAction SilentlyContinue }
 
-Write-Host "${creamyGreen}[OK] Desktop shortcut created (Secret-Optimizer.lnk).${reset}"
+Write-Host "${creamyGreen}[OK] Desktop shortcut created: Secret-Optimizer.lnk${reset}"
 
 # -------------------------------------------------------------
-# STEP 3: WELCOME & DIRECT ELEVATED LAUNCH
+# STEP 5: WELCOME & DIRECT ELEVATED LAUNCH
 # -------------------------------------------------------------
 Write-Host ''
 Write-Host '====================================================================='
 Write-Host " Welcome, $env:USERNAME."
-Write-Host ' Status: Secret-Optimizer deployed successfully.'
+Write-Host ' Status: Secret-Optimizer installed and verified successfully.'
 Write-Host ' Launching Secret-Optimizer...'
 Write-Host '====================================================================='
 Write-Host ''
@@ -237,7 +382,5 @@ Start-Sleep -Milliseconds 800
 
 if (Test-Path $mainBat) {
     cmd /c "`"$mainBat`""
-} elseif (Test-Path "$localScriptRoot\Tools\secret-optimizer.bat") {
-    cmd /c "`"$localScriptRoot\Tools\secret-optimizer.bat`""
 }
 exit 0
