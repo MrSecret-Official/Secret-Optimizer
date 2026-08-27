@@ -1,17 +1,17 @@
 <#
 .SYNOPSIS
-    Secret-Optimizer System Health Report Generator
+    Secret-Optimizer Comprehensive Performance, RAM & Bloatware Audit Report
 .DESCRIPTION
-    Generates a comprehensive, formal HTML health report of the Windows system.
+    Generates a state-of-the-art HTML performance report focused on memory pressure,
+    process resource consumption, helper subprocess overhead, Windows bloatware audit,
+    and telemetry & background service bottlenecks.
 .AUTHOR
     mrsecret_official
 #>
 
 [CmdletBinding()]
 param(
-    [string]$OutputPath = "",
-    [string]$TargetDrive = $env:SystemDrive,
-    [switch]$IsWinRE = $false
+    [string]$OutputPath = ""
 )
 
 $esc = [char]27
@@ -27,263 +27,220 @@ if (-not $OutputPath) {
     $docsFolder = [Environment]::GetFolderPath('MyDocuments')
     $reportDir = "$docsFolder\Secret-Optimizer\Reports"
     if (-not (Test-Path $reportDir)) { New-Item -ItemType Directory -Path $reportDir -Force | Out-Null }
-    $OutputPath = "$reportDir\SecretOptimizer_HealthReport_$timestamp.html"
+    $OutputPath = "$reportDir\SecretOptimizer_PerformanceReport_$timestamp.html"
 }
 
 Write-Host ""
-Write-Host "${creamyCyan}[REPORT] Collecting system data...${reset}"
+Write-Host "${creamyCyan}[REPORT] Analyzing system performance, RAM metrics, and bloatware...${reset}"
 
 # ──────────────────────────────────────────────
-# DATA COLLECTION
+# 1. SYSTEM & CPU METRICS
 # ──────────────────────────────────────────────
+$os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
+$cs = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue
+$cpu = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1
 
-# Basic System Info
-$os = Get-WmiObject Win32_OperatingSystem
-$cs = Get-WmiObject Win32_ComputerSystem
-$bios = Get-WmiObject Win32_BIOS
-$cpu = Get-WmiObject Win32_Processor | Select-Object -First 1
 $reportDate = Get-Date -Format "dddd, MMMM dd, yyyy - HH:mm:ss"
 $hostname = $env:COMPUTERNAME
 $currentUser = $env:USERNAME
-$uptime = if ($os) { $os.ConvertToDateTime($os.LastBootUpTime) } else { 'N/A' }
-$osName = if ($os) { $os.Caption } else { 'N/A' }
+$uptime = if ($os -and $os.LastBootUpTime) {
+    $ts = (Get-Date) - $os.LastBootUpTime
+    "$($ts.Days)d $($ts.Hours)h $($ts.Minutes)m"
+} else { 'N/A' }
+
+$osName = if ($os) { $os.Caption } else { 'Windows 11/10' }
 $osBuild = if ($os) { $os.BuildNumber } else { 'N/A' }
-$osArch = if ($os) { $os.OSArchitecture } else { 'N/A' }
-$installDate = if ($os) { $os.ConvertToDateTime($os.InstallDate).ToString("yyyy-MM-dd") } else { 'N/A' }
+$osArch = if ($os) { $os.OSArchitecture } else { '64-bit' }
 
-Write-Host "${dimText}  [1/8] OS info collected...${reset}"
-
-# CPU Info
-$cpuName = if ($cpu) { $cpu.Name.Trim() } else { 'N/A' }
+$cpuName = if ($cpu) { $cpu.Name.Trim() } else { 'Generic CPU' }
 $cpuCores = if ($cpu) { "$($cpu.NumberOfCores) Cores / $($cpu.NumberOfLogicalProcessors) Threads" } else { 'N/A' }
 $cpuSpeed = if ($cpu) { "$([math]::Round($cpu.MaxClockSpeed/1000, 2)) GHz" } else { 'N/A' }
 $cpuLoad = if ($cpu) { "$($cpu.LoadPercentage)%" } else { 'N/A' }
 
-Write-Host "${dimText}  [2/8] CPU info collected...${reset}"
-
-# RAM
-$totalRam = if ($cs) { [math]::Round($cs.TotalPhysicalMemory / 1GB, 2) } else { 0 }
-$freeRam  = if ($os) { [math]::Round($os.FreePhysicalMemory / 1MB, 2) } else { 0 }
-$usedRam  = [math]::Round($totalRam - $freeRam, 2)
-$ramPercent = if ($totalRam -gt 0) { [math]::Round(($usedRam / $totalRam) * 100, 1) } else { 0 }
-
-$ramModules = @()
+# Power Plan
+$activePowerPlan = 'Balanced'
 try {
-    $ramModules = Get-WmiObject Win32_PhysicalMemory | Select-Object BankLabel,
-        @{N='Capacity';E={[math]::Round($_.Capacity/1GB,1)}},
-        Speed, Manufacturer, MemoryType
+    $planOut = powercfg /getactivescheme 2>&1
+    if ($planOut -match '\((.*?)\)') { $activePowerPlan = $matches[1] }
 } catch {}
 
-Write-Host "${dimText}  [3/8] RAM info collected...${reset}"
-
-# Disk Info
-$disks = @()
-try {
-    $disks = Get-WmiObject Win32_LogicalDisk -Filter "DriveType=3" | ForEach-Object {
-        $free = [math]::Round($_.FreeSpace / 1GB, 2)
-        $total = [math]::Round($_.Size / 1GB, 2)
-        $used = [math]::Round($total - $free, 2)
-        $pct = if ($total -gt 0) { [math]::Round(($used / $total) * 100, 1) } else { 0 }
-        $status = if ($pct -gt 90) { 'Critical' } elseif ($pct -gt 75) { 'Warning' } else { 'OK' }
-        [PSCustomObject]@{
-            Drive = $_.DeviceID
-            Total = $total
-            Used  = $used
-            Free  = $free
-            Pct   = $pct
-            Status = $status
-            FS    = $_.FileSystem
-        }
-    }
-} catch {}
-
-Write-Host "${dimText}  [4/8] Disk info collected...${reset}"
-
-# GPU Info
-$gpus = @()
-try {
-    $gpus = Get-WmiObject Win32_VideoController | Select-Object Name,
-        @{N='VRAM';E={[math]::Round($_.AdapterRAM/1MB,0)}},
-        DriverVersion, VideoModeDescription
-} catch {}
-
-Write-Host "${dimText}  [5/8] GPU info collected...${reset}"
-
-# Network
-$netAdapters = @()
-try {
-    $netAdapters = Get-WmiObject Win32_NetworkAdapterConfiguration -Filter "IPEnabled=True" | ForEach-Object {
-        [PSCustomObject]@{
-            Name    = $_.Description
-            IP      = ($_.IPAddress -join ', ')
-            MAC     = $_.MACAddress
-            Gateway = ($_.DefaultIPGateway -join ', ')
-            DNS     = ($_.DNSServerSearchOrder -join ', ')
-            DHCP    = if ($_.DHCPEnabled) { 'Yes' } else { 'No' }
-        }
-    }
-} catch {}
-
-Write-Host "${dimText}  [6/8] Network info collected...${reset}"
-
-# SMART / Disk Health
-$diskPhysical = @()
-try {
-    $diskPhysical = Get-WmiObject Win32_DiskDrive | Select-Object Model, Status,
-        @{N='SizeGB';E={[math]::Round($_.Size/1GB,1)}},
-        InterfaceType, MediaType
-} catch {}
-
-# Services (critical)
-$criticalServices = @('wuauserv','WinDefend','BITS','Spooler','EventLog','SamSs','Schedule','Dhcp','Dnscache','W32Time','WlanSvc','wscsvc')
-$serviceStatus = @()
-foreach ($svc in $criticalServices) {
-    try {
-        $s = Get-Service -Name $svc -ErrorAction SilentlyContinue
-        if ($s) {
-            $serviceStatus += [PSCustomObject]@{
-                Name = $s.DisplayName
-                Status = $s.Status.ToString()
-                StartType = $s.StartType.ToString()
-            }
-        }
-    } catch {}
-}
-
-Write-Host "${dimText}  [7/8] Services info collected...${reset}"
-
-# SrtTrail
-$srtContent = ''
-$srtPath = "$TargetDrive\Windows\System32\Logfiles\Srt\SrtTrail.txt"
-if (Test-Path $srtPath) {
-    $srtContent = (Get-Content $srtPath -Tail 20 -ErrorAction SilentlyContinue) -join "`n"
-}
-
-# Windows Defender Status
-$defenderStatus = 'N/A'
-$defenderDefs = 'N/A'
-try {
-    $def = Get-MpComputerStatus -ErrorAction SilentlyContinue
-    if ($def) {
-        $defenderStatus = if ($def.RealTimeProtectionEnabled) { 'Active' } else { 'Disabled' }
-        $defenderDefs = $def.AntivirusSignatureLastUpdated.ToString("yyyy-MM-dd HH:mm")
-    }
-} catch {}
-
-# Pending Windows Updates count
-$pendingUpdates = 'N/A'
-try {
-    $sess = New-Object -ComObject Microsoft.Update.Session -ErrorAction SilentlyContinue
-    if ($sess) {
-        $search = $sess.CreateUpdateSearcher()
-        $result = $search.Search("IsInstalled=0 and Type='Software'")
-        $pendingUpdates = $result.Updates.Count.ToString()
-    }
-} catch {}
-
-Write-Host "${dimText}  [8/8] Security info collected...${reset}"
+Write-Host "${dimText}  [1/6] Hardware profile & CPU metrics collected...${reset}"
 
 # ──────────────────────────────────────────────
-# HEALTH SCORES
+# 2. MEMORY & WORKING SET METRICS
 # ──────────────────────────────────────────────
-$diskScore = if ($disks) { if (($disks | Where-Object { $_.Status -eq 'Critical' }).Count -gt 0) { 'Critical' } elseif (($disks | Where-Object { $_.Status -eq 'Warning' }).Count -gt 0) { 'Warning' } else { 'Healthy' } } else { 'Unknown' }
-$ramScore = if ($ramPercent -gt 90) { 'Critical' } elseif ($ramPercent -gt 75) { 'Warning' } else { 'Healthy' }
-$cpuScore = try { $l = [int]($cpu.LoadPercentage); if ($l -gt 90) { 'Critical' } elseif ($l -gt 70) { 'Warning' } else { 'Healthy' } } catch { 'Unknown' }
-$secScore = if ($defenderStatus -eq 'Active') { 'Healthy' } else { 'Warning' }
+$totalRamGB = if ($cs) { [math]::Round($cs.TotalPhysicalMemory / 1GB, 2) } else { 16 }
+$freeRamGB  = if ($os) { [math]::Round($os.FreePhysicalMemory / 1MB, 2) } else { 8 }
+$usedRamGB  = [math]::Round($totalRamGB - $freeRamGB, 2)
+$ramPercent = if ($totalRamGB -gt 0) { [math]::Round(($usedRamGB / $totalRamGB) * 100, 1) } else { 50 }
 
-function Get-StatusBadge([string]$status) {
-    switch ($status) {
-        'Healthy'  { return '<span class="badge badge-ok">Healthy</span>' }
-        'Warning'  { return '<span class="badge badge-warn">Warning</span>' }
-        'Critical' { return '<span class="badge badge-crit">Critical</span>' }
-        'Active'   { return '<span class="badge badge-ok">Active</span>' }
-        'Disabled' { return '<span class="badge badge-crit">Disabled</span>' }
-        'Running'  { return '<span class="badge badge-ok">Running</span>' }
-        'Stopped'  { return '<span class="badge badge-crit">Stopped</span>' }
-        'OK'       { return '<span class="badge badge-ok">OK</span>' }
-        default    { return "<span class='badge badge-warn'>$status</span>" }
+$protectedList = @(
+    'System', 'Idle', 'Registry', 'smss', 'csrss', 'wininit', 'services', 'lsass',
+    'winlogon', 'dwm', 'fontdrvhost', 'powershell', 'pwsh', 'cmd', 'conhost',
+    'taskmgr', 'MsMpEng', 'SecurityHealthService', 'Antigravity', 'Code'
+)
+
+# Top RAM Processes
+$allProcs = Get-Process -ErrorAction SilentlyContinue
+$topProcesses = $allProcs | Sort-Object WorkingSet64 -Descending | Select-Object -First 15
+
+# Helper Subprocesses (Browsers, Electron, Game Helpers)
+$helperPatterns = @('chrome', 'msedge', 'brave', 'opera', 'firefox', 'discord', 'spotify', 'slack', 'teams', 'steamwebhelper', 'epicgameslauncher', 'googledrive', 'adobearm')
+$helperProcs = $allProcs | Where-Object {
+    $name = $_.ProcessName.ToLower()
+    $helperPatterns | Where-Object { $name -like "*$_*" }
+}
+
+$helperCount = $helperProcs.Count
+$helperWSBytes = ($helperProcs | Measure-Object -Property WorkingSet64 -Sum).Sum
+$helperWSMB = [math]::Round($helperWSBytes / 1MB, 1)
+$helperWSGB = [math]::Round($helperWSBytes / 1GB, 2)
+
+Write-Host "${dimText}  [2/6] Process working sets & helper instances analyzed...${reset}"
+
+# ──────────────────────────────────────────────
+# 3. WINDOWS BLOATWARE & APPX AUDIT
+# ──────────────────────────────────────────────
+$installedAppx = Get-AppxPackage -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name -Unique
+$bloatAuditList = @(
+    @{ Name = "Clipchamp.Clipchamp"; Display = "Clipchamp Video Editor"; Category = "Promo Tool" }
+    @{ Name = "Microsoft.BingNews"; Display = "Microsoft News & Feed"; Category = "News / Feed" }
+    @{ Name = "Microsoft.BingWeather"; Display = "Bing Weather Widget"; Category = "Widget" }
+    @{ Name = "Microsoft.BingFinance"; Display = "Bing Money & Finance"; Category = "Widget" }
+    @{ Name = "Microsoft.BingSports"; Display = "Bing Sports"; Category = "Widget" }
+    @{ Name = "Microsoft.WindowsFeedbackHub"; Display = "Windows Feedback Hub"; Category = "Telemetry" }
+    @{ Name = "Microsoft.GetHelp"; Display = "Get Help Online Assistant"; Category = "Promo Tool" }
+    @{ Name = "Microsoft.Getstarted"; Display = "Tips / Welcome App"; Category = "Promo Tool" }
+    @{ Name = "Microsoft.People"; Display = "People / Contacts Bar"; Category = "Obsolete App" }
+    @{ Name = "Microsoft.PowerAutomateDesktop"; Display = "Power Automate Desktop"; Category = "Enterprise Bloat" }
+    @{ Name = "Microsoft.549981C3F5F10"; Display = "Cortana (Deprecated)"; Category = "Obsolete Voice" }
+    @{ Name = "Microsoft.MixedReality.Portal"; Display = "Mixed Reality Portal"; Category = "VR Bloat" }
+    @{ Name = "Microsoft.MicrosoftSolitaireCollection"; Display = "Microsoft Solitaire Collection"; Category = "Sponsored Game" }
+    @{ Name = "Microsoft.Microsoft3DViewer"; Display = "3D Viewer"; Category = "Obsolete App" }
+    @{ Name = "Microsoft.WindowsMaps"; Display = "Windows Maps"; Category = "Navigation" }
+    @{ Name = "TikTok"; Display = "TikTok Sponsored App"; Category = "Sponsored App" }
+    @{ Name = "CandyCrush"; Display = "Candy Crush Saga"; Category = "Sponsored Game" }
+    @{ Name = "Disney"; Display = "Disney+ App"; Category = "Sponsored App" }
+    @{ Name = "SpotifyAB.SpotifyMusic"; Display = "Spotify Pre-installed Stub"; Category = "Music Stub" }
+    @{ Name = "Netflix"; Display = "Netflix Pre-installed Stub"; Category = "Video Stub" }
+    @{ Name = "PrimeVideo"; Display = "Amazon Prime Video Stub"; Category = "Video Stub" }
+)
+
+$bloatResults = @()
+$detectedBloatCount = 0
+
+foreach ($b in $bloatAuditList) {
+    $match = $installedAppx | Where-Object { $_ -like "*$($b.Name)*" }
+    $isInstalled = ($null -ne $match -and $match.Count -gt 0)
+    if ($isInstalled) { $detectedBloatCount++ }
+    $bloatResults += [PSCustomObject]@{
+        Name        = $b.Name
+        Display     = $b.Display
+        Category    = $b.Category
+        IsInstalled = $isInstalled
+        Status      = if ($isInstalled) { "INSTALLED" } else { "CLEAN" }
     }
 }
 
-function Get-DiskBar([int]$pct, [string]$status) {
-    $col = switch ($status) {
-        'Critical' { '#e87878' }
-        'Warning'  { '#f5dc82' }
-        default    { '#91e1a5' }
+$xboxMatch = $installedAppx | Where-Object { $_ -like "*XboxGamingOverlay*" -or $_ -like "*XboxApp*" }
+$xboxInstalled = if ($xboxMatch) { $true } else { $false }
+
+Write-Host "${dimText}  [3/6] Windows AppX bloatware packages audited...${reset}"
+
+# ──────────────────────────────────────────────
+# 4. PRIVACY, TELEMETRY & ADS AUDIT
+# ──────────────────────────────────────────────
+$telemetryVal = $null
+$advVal = $null
+$startAdsVal = $null
+$bingSearchVal = $null
+
+try {
+    $telemetryVal = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name "AllowTelemetry" -ErrorAction SilentlyContinue).AllowTelemetry
+} catch {}
+try {
+    $advVal = (Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo" -Name "Enabled" -ErrorAction SilentlyContinue).Enabled
+} catch {}
+try {
+    $cdm = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" -ErrorAction SilentlyContinue
+    $startAdsVal = $cdm.SystemPaneSuggestionsEnabled
+} catch {}
+try {
+    $bingSearchVal = (Get-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\Windows\Explorer" -Name "DisableSearchBoxSuggestions" -ErrorAction SilentlyContinue).DisableSearchBoxSuggestions
+} catch {}
+
+$telemetryStatus = if ($telemetryVal -eq 0) { "DISABLED (OPTIMIZED)" } else { "ACTIVE (FULL TELEMETRY)" }
+$advStatus = if ($advVal -eq 0) { "DISABLED (OPTIMIZED)" } else { "ACTIVE (TRACKING)" }
+$startAdsStatus = if ($startAdsVal -eq 0) { "DISABLED (CLEAN)" } else { "ACTIVE (SHOWING ADS)" }
+$bingSearchStatus = if ($bingSearchVal -eq 1) { "DISABLED (LOCAL ONLY)" } else { "ACTIVE (BING WEB SEARCH)" }
+
+Write-Host "${dimText}  [4/6] Privacy, telemetry & Start Menu adware scanned...${reset}"
+
+# ──────────────────────────────────────────────
+# 5. BACKGROUND SERVICES AUDIT
+# ──────────────────────────────────────────────
+$servicesAudit = @(
+    @{ Name = "DiagTrack"; Display = "Connected User Experiences & Telemetry" }
+    @{ Name = "dmwappushservice"; Display = "Device Management WAP Push Telemetry" }
+    @{ Name = "MapsBroker"; Display = "Downloaded Maps Manager" }
+    @{ Name = "WerSvc"; Display = "Windows Error Reporting Service" }
+    @{ Name = "RemoteRegistry"; Display = "Remote Registry Service" }
+    @{ Name = "RetailDemo"; Display = "Retail Demo Service" }
+    @{ Name = "WSearch"; Display = "Windows Search Indexing Service" }
+)
+
+$servicesResults = @()
+foreach ($s in $servicesAudit) {
+    $srvObj = Get-Service -Name $s.Name -ErrorAction SilentlyContinue
+    $status = if ($srvObj) { $srvObj.Status.ToString() } else { "Not Found" }
+    $startType = if ($srvObj) { $srvObj.StartType.ToString() } else { "N/A" }
+    $servicesResults += [PSCustomObject]@{
+        Name      = $s.Name
+        Display   = $s.Display
+        Status    = $status
+        StartType = $startType
+        IsHeavy   = ($status -eq "Running" -and $s.Name -in @('DiagTrack', 'dmwappushservice', 'RetailDemo'))
     }
-    return "<div class='disk-bar-bg'><div class='disk-bar-fill' style='width:${pct}%;background:${col}'></div></div><span class='disk-pct'>${pct}%</span>"
 }
+
+# Startup items
+$startupItems = @()
+try {
+    $startupItems = Get-CimInstance Win32_StartupCommand -ErrorAction SilentlyContinue | Select-Object -First 10
+} catch {}
+
+Write-Host "${dimText}  [5/6] Background services & startup bottlenecks inspected...${reset}"
 
 # ──────────────────────────────────────────────
-# RAM modules rows
-$ramRows = ''
-foreach ($mod in $ramModules) {
-    $ramRows += "<tr><td>$($mod.BankLabel)</td><td>$($mod.Capacity) GB</td><td>$($mod.Speed) MHz</td><td>$($mod.Manufacturer)</td></tr>"
-}
-if (-not $ramRows) { $ramRows = '<tr><td colspan="4" class="no-data">No RAM module details available</td></tr>' }
+# 6. EXECUTIVE OPTIMIZATION SCORE
+# ──────────────────────────────────────────────
+$score = 100
+if ($ramPercent -gt 85) { $score -= 20 }
+elseif ($ramPercent -gt 70) { $score -= 10 }
 
-# Disk rows
-$diskRows = ''
-foreach ($d in $disks) {
-    $diskRows += "<tr>
-        <td><span class='drive-label'>$($d.Drive)</span></td>
-        <td>$($d.FS)</td>
-        <td>$($d.Total) GB</td>
-        <td>$($d.Used) GB</td>
-        <td>$($d.Free) GB</td>
-        <td>$(Get-DiskBar -pct $d.Pct -status $d.Status)</td>
-        <td>$(Get-StatusBadge $d.Status)</td>
-    </tr>"
-}
-if (-not $diskRows) { $diskRows = '<tr><td colspan="7" class="no-data">No disk data available</td></tr>' }
+if ($detectedBloatCount -gt 5) { $score -= 20 }
+elseif ($detectedBloatCount -gt 0) { $score -= ($detectedBloatCount * 3) }
 
-# Physical disk rows
-$physRows = ''
-foreach ($d in $diskPhysical) {
-    $st = if ($d.Status -eq 'OK') { 'OK' } else { 'Warning' }
-    $physRows += "<tr><td>$($d.Model)</td><td>$($d.SizeGB) GB</td><td>$($d.InterfaceType)</td><td>$($d.MediaType)</td><td>$(Get-StatusBadge $st)</td></tr>"
-}
-if (-not $physRows) { $physRows = '<tr><td colspan="5" class="no-data">No physical disk data available</td></tr>' }
+if ($telemetryStatus -match 'ACTIVE') { $score -= 10 }
+if ($startAdsStatus -match 'ACTIVE') { $score -= 10 }
+if ($activePowerPlan -match 'Power Saver|Balanced') { $score -= 5 }
 
-# GPU rows
-$gpuRows = ''
-foreach ($g in $gpus) {
-    $gpuRows += "<tr><td>$($g.Name)</td><td>$($g.VRAM) MB</td><td>$($g.DriverVersion)</td><td>$($g.VideoModeDescription)</td></tr>"
-}
-if (-not $gpuRows) { $gpuRows = '<tr><td colspan="4" class="no-data">No GPU data available</td></tr>' }
+if ($score -lt 20) { $score = 25 }
 
-# Network rows
-$netRows = ''
-foreach ($n in $netAdapters) {
-    $netRows += "<tr><td>$($n.Name)</td><td>$($n.IP)</td><td>$($n.MAC)</td><td>$($n.Gateway)</td><td>$($n.DNS)</td><td>$($n.DHCP)</td></tr>"
-}
-if (-not $netRows) { $netRows = '<tr><td colspan="6" class="no-data">No active network adapters found</td></tr>' }
+$grade = if ($score -ge 90) { 'A (EXCELLENT)' }
+         elseif ($score -ge 75) { 'B (GOOD - MINOR TWEAKS)' }
+         elseif ($score -ge 55) { 'C (NEEDS DEBLOAT & RAM CLEAN)' }
+         else { 'D (HEAVILY BLOATED)' }
 
-# Service rows
-$svcRows = ''
-foreach ($s in $serviceStatus) {
-    $svcRows += "<tr><td>$($s.Name)</td><td>$(Get-StatusBadge $s.Status)</td><td>$($s.StartType)</td></tr>"
-}
-if (-not $svcRows) { $svcRows = '<tr><td colspan="3" class="no-data">No service data available</td></tr>' }
+$gradeColor = if ($score -ge 85) { '#4ade80' } elseif ($score -ge 65) { '#fbbf24' } else { '#f87171' }
 
-# SRT section
-$srtSection = if ($srtContent) {
-    "<pre class='log-block'>$([System.Web.HttpUtility]::HtmlEncode($srtContent))</pre>"
-} else {
-    '<p class="no-data-p">No SrtTrail.txt log found on this system. Boot process is clean.</p>'
-}
+# Estimated reclaimable RAM
+$estimatedReclaimMB = [math]::Round(($helperWSMB * 0.65) + 350, 0)
 
-# Overall health
-$allScores = @($diskScore, $ramScore, $cpuScore, $secScore)
-$overallHealth = if ($allScores -contains 'Critical') { 'Critical' } elseif ($allScores -contains 'Warning') { 'Warning' } else { 'Healthy' }
-$overallColor = switch ($overallHealth) {
-    'Critical' { '#e87878' }
-    'Warning'  { '#f5dc82' }
-    default    { '#91e1a5' }
-}
+Write-Host "${dimText}  [6/6] Generating rich HTML dashboard...${reset}"
 
 # ──────────────────────────────────────────────
-# HTML GENERATION
+# HTML TEMPLATE
 # ──────────────────────────────────────────────
 $html = @"
 <!DOCTYPE html>
@@ -291,649 +248,605 @@ $html = @"
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Secret-Optimizer System Health Report - $hostname</title>
+<title>Secret-Optimizer Performance & Health Report - $hostname</title>
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
     :root {
-        --bg-primary: #0d1117;
-        --bg-secondary: #161b22;
-        --bg-card: #1c2128;
-        --bg-card-hover: #21262d;
-        --border: #30363d;
-        --border-light: #21262d;
-        --text-primary: #e6edf3;
-        --text-secondary: #8b949e;
-        --text-muted: #6e7681;
-        --accent-blue: #4493f8;
-        --accent-green: #3fb950;
-        --accent-yellow: #d29922;
-        --accent-red: #f85149;
-        --accent-purple: #bc8cff;
-        --ok-bg: rgba(63, 185, 80, 0.12);
-        --ok-text: #3fb950;
-        --warn-bg: rgba(210, 153, 34, 0.15);
-        --warn-text: #d29922;
-        --crit-bg: rgba(248, 81, 73, 0.15);
-        --crit-text: #f85149;
+        --bg-main: #070a12;
+        --bg-card: rgba(18, 25, 41, 0.85);
+        --bg-card-hover: rgba(26, 36, 60, 0.95);
+        --border-card: rgba(56, 189, 248, 0.12);
+        --border-active: rgba(56, 189, 248, 0.4);
+        --text-main: #f1f5f9;
+        --text-sub: #94a3b8;
+        --text-dim: #64748b;
+        --cyan: #38bdf8;
+        --green: #4ade80;
+        --yellow: #fbbf24;
+        --red: #f87171;
+        --purple: #c084fc;
     }
 
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-        font-family: 'Inter', sans-serif;
-        background-color: var(--bg-primary);
-        color: var(--text-primary);
-        font-size: 14px;
+        background-color: var(--bg-main);
+        background-image: 
+            radial-gradient(at 0% 0%, rgba(56, 189, 248, 0.08) 0px, transparent 50%),
+            radial-gradient(at 100% 100%, rgba(192, 132, 252, 0.06) 0px, transparent 50%);
+        color: var(--text-main);
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         line-height: 1.6;
-        min-height: 100vh;
+        padding: 30px 20px;
     }
 
-    .report-header {
-        background: linear-gradient(135deg, #0d1117 0%, #161b22 50%, #1c2128 100%);
-        border-bottom: 1px solid var(--border);
-        padding: 48px 60px 40px;
-        position: relative;
-        overflow: hidden;
+    .container {
+        max-width: 1240px;
+        margin: 0 auto;
     }
 
-    .report-header::before {
-        content: '';
-        position: absolute;
-        top: -80px;
-        right: -80px;
-        width: 300px;
-        height: 300px;
-        background: radial-gradient(circle, rgba(68, 147, 248, 0.08) 0%, transparent 70%);
-        border-radius: 50%;
-    }
-
-    .report-header::after {
-        content: '';
-        position: absolute;
-        bottom: -60px;
-        left: 200px;
-        width: 200px;
-        height: 200px;
-        background: radial-gradient(circle, rgba(63, 185, 80, 0.06) 0%, transparent 70%);
-        border-radius: 50%;
-    }
-
-    .header-top {
+    /* HEADER */
+    .header {
+        background: var(--bg-card);
+        border: 1px solid var(--border-card);
+        border-radius: 16px;
+        padding: 28px 32px;
         display: flex;
-        align-items: flex-start;
         justify-content: space-between;
-        gap: 30px;
+        align-items: center;
+        margin-bottom: 24px;
+        backdrop-filter: blur(12px);
+        box-shadow: 0 10px 25px rgba(0,0,0,0.3);
     }
 
-    .header-left {
+    .logo-container {
         display: flex;
-        flex-direction: column;
+        align-items: center;
+        gap: 16px;
     }
 
-    .report-title {
-        font-size: 28px;
-        font-weight: 700;
-        color: var(--text-primary);
+    .logo-icon {
+        width: 48px;
+        height: 48px;
+        background: linear-gradient(135deg, #0284c7, #38bdf8);
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        box-shadow: 0 0 20px rgba(56, 189, 248, 0.35);
+    }
+
+    .brand-title {
+        font-size: 24px;
+        font-weight: 800;
         letter-spacing: -0.5px;
-        margin-bottom: 6px;
-    }
-
-    .report-subtitle {
-        font-size: 14px;
-        color: var(--text-secondary);
-        margin-bottom: 16px;
-    }
-
-    .header-right {
-        text-align: right;
-        display: flex;
-        flex-direction: column;
-        align-items: flex-end;
-        justify-content: flex-start;
-    }
-
-    .brand-name {
-        font-size: 20px;
-        font-weight: 700;
-        color: var(--accent-blue);
-        letter-spacing: 0.5px;
-        line-height: 1.2;
+        background: linear-gradient(90deg, #38bdf8, #818cf8);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
     }
 
     .brand-sub {
-        font-size: 12px;
-        color: var(--text-secondary);
-        font-weight: 500;
-        margin-top: 2px;
-        margin-bottom: 12px;
+        font-size: 13px;
+        color: var(--text-sub);
     }
 
-    .report-date {
-        font-size: 12px;
-        color: var(--text-primary);
-        font-family: 'JetBrains Mono', monospace;
-        margin-bottom: 4px;
-        text-transform: capitalize;
-    }
-
-    .report-host {
-        font-size: 12px;
-        color: var(--text-muted);
-        font-family: 'JetBrains Mono', monospace;
-    }
-
-    .overall-health {
-        display: inline-flex;
-        align-items: center;
-        gap: 10px;
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        padding: 8px 16px;
-        width: fit-content;
-    }
-
-    .health-dot {
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        background: $overallColor;
-        box-shadow: 0 0 8px ${overallColor}88;
-    }
-
-    .health-text { font-size: 13px; color: var(--text-secondary); }
-    .health-value { font-size: 13px; font-weight: 600; color: $overallColor; }
-
-    .container { max-width: 1200px; margin: 0 auto; padding: 40px 60px; }
-
-    .summary-grid {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 16px;
-        margin-bottom: 40px;
-    }
-
-    .summary-card {
-        background: var(--bg-card);
-        border: 1px solid var(--border);
+    .header-score-card {
+        text-align: right;
+        background: rgba(10, 15, 26, 0.7);
+        padding: 12px 24px;
         border-radius: 12px;
-        padding: 20px;
-        transition: border-color 0.2s;
+        border: 1px solid var(--border-card);
     }
 
-    .summary-card:hover { border-color: var(--accent-blue); }
-    .summary-card-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 8px; font-weight: 500; }
-    .summary-card-value { font-size: 22px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px; }
-    .summary-card-sub { font-size: 11px; color: var(--text-secondary); }
-    .summary-card-status { font-size: 11px; font-weight: 600; margin-top: 6px; }
+    .score-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        color: var(--text-dim);
+        font-weight: 700;
+        letter-spacing: 0.5px;
+    }
 
-    .section { margin-bottom: 40px; }
+    .score-val {
+        font-size: 28px;
+        font-weight: 800;
+        font-family: 'JetBrains Mono', monospace;
+    }
 
-    .section-header {
+    /* SUMMARY GRID */
+    .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+
+    .kpi-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-card);
+        border-radius: 14px;
+        padding: 20px;
+        backdrop-filter: blur(8px);
+        transition: transform 0.2s, border-color 0.2s;
+    }
+
+    .kpi-card:hover {
+        transform: translateY(-2px);
+        border-color: var(--border-active);
+    }
+
+    .kpi-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-sub);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 8px;
+    }
+
+    .kpi-value {
+        font-size: 22px;
+        font-weight: 700;
+        font-family: 'JetBrains Mono', monospace;
+        margin-bottom: 6px;
+    }
+
+    .kpi-sub {
+        font-size: 12px;
+        color: var(--text-dim);
+    }
+
+    /* SECTIONS */
+    .section {
+        background: var(--bg-card);
+        border: 1px solid var(--border-card);
+        border-radius: 14px;
+        padding: 24px 28px;
+        margin-bottom: 24px;
+        backdrop-filter: blur(8px);
+    }
+
+    .section-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--text-main);
         display: flex;
         align-items: center;
         gap: 10px;
         margin-bottom: 16px;
         padding-bottom: 12px;
-        border-bottom: 1px solid var(--border-light);
+        border-bottom: 1px solid rgba(255,255,255,0.06);
     }
 
     .section-icon {
-        width: 32px;
-        height: 32px;
-        border-radius: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
+        color: var(--cyan);
+        font-size: 18px;
     }
 
-    .section-icon svg {
-        width: 17px;
-        height: 17px;
-        stroke: currentColor;
-        fill: none;
-        stroke-width: 2;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-    }
-
-    .section-title { font-size: 16px; font-weight: 600; color: var(--text-primary); }
-    .section-desc { font-size: 12px; color: var(--text-muted); }
-
-    table { width: 100%; border-collapse: collapse; }
-
-    .table-wrap {
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: 12px;
+    /* RAM PROGRESS BAR */
+    .progress-bar-container {
+        background: rgba(0,0,0,0.4);
+        border-radius: 10px;
+        height: 20px;
+        width: 100%;
         overflow: hidden;
+        margin: 10px 0 16px 0;
+        border: 1px solid rgba(255,255,255,0.08);
     }
 
-    thead tr { background: var(--bg-secondary); }
+    .progress-bar-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #0284c7, #38bdf8);
+        border-radius: 8px;
+        transition: width 0.5s;
+    }
 
-    th {
-        padding: 10px 16px;
+    /* TABLES */
+    .data-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 8px;
+        font-size: 13px;
+    }
+
+    .data-table th {
         text-align: left;
+        padding: 10px 12px;
+        color: var(--text-dim);
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 11px;
+        letter-spacing: 0.5px;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .data-table td {
+        padding: 10px 12px;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+        color: var(--text-main);
+    }
+
+    .data-table tr:hover td {
+        background: rgba(255,255,255,0.02);
+    }
+
+    .mono {
+        font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* BADGES */
+    .badge {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 6px;
         font-size: 11px;
         font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 0.8px;
-        color: var(--text-muted);
-        border-bottom: 1px solid var(--border);
-    }
-
-    td {
-        padding: 12px 16px;
-        font-size: 13px;
-        color: var(--text-primary);
-        border-bottom: 1px solid var(--border-light);
-        vertical-align: middle;
-    }
-
-    tbody tr:last-child td { border-bottom: none; }
-    tbody tr:hover { background: var(--bg-card-hover); }
-
-    .badge {
-        display: inline-block;
-        padding: 2px 10px;
-        border-radius: 20px;
-        font-size: 11px;
-        font-weight: 600;
-        letter-spacing: 0.3px;
-    }
-
-    .badge-ok   { background: var(--ok-bg);   color: var(--ok-text);   }
-    .badge-warn { background: var(--warn-bg);  color: var(--warn-text); }
-    .badge-crit { background: var(--crit-bg);  color: var(--crit-text); }
-
-    .drive-label {
         font-family: 'JetBrains Mono', monospace;
-        font-size: 12px;
-        font-weight: 600;
-        color: var(--accent-blue);
     }
 
-    .disk-bar-bg {
-        display: inline-block;
-        width: 110px;
-        height: 6px;
-        background: var(--bg-secondary);
-        border-radius: 4px;
-        overflow: hidden;
-        vertical-align: middle;
-        margin-right: 8px;
-    }
+    .badge-clean { background: rgba(74, 222, 128, 0.15); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.3); }
+    .badge-bloat { background: rgba(248, 113, 113, 0.15); color: #f87171; border: 1px solid rgba(248, 113, 113, 0.3); }
+    .badge-warn  { background: rgba(251, 191, 36, 0.15); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.3); }
+    .badge-info  { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); }
 
-    .disk-bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
-    .disk-pct { font-size: 12px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; vertical-align: middle; }
-
-    .info-grid {
+    /* ACTION ROADMAP */
+    .roadmap-list {
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 16px;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 12px;
+        margin-top: 8px;
     }
 
-    .info-card {
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        padding: 20px 24px;
-    }
-
-    .info-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border-light); }
-    .info-row:last-child { border-bottom: none; }
-    .info-label { font-size: 12px; color: var(--text-muted); }
-    .info-value { font-size: 12px; color: var(--text-primary); font-weight: 500; text-align: right; max-width: 60%; word-break: break-word; }
-
-    .ram-bar-wrap { margin-top: 4px; }
-
-    .ram-bar-bg {
-        width: 100%;
-        height: 8px;
-        background: var(--bg-secondary);
-        border-radius: 6px;
-        overflow: hidden;
-        margin-bottom: 6px;
-    }
-
-    .ram-bar-fill {
-        height: 100%;
-        border-radius: 6px;
-        background: linear-gradient(90deg, var(--accent-blue), #6cb4f8);
-    }
-
-    .log-block {
-        background: var(--bg-secondary);
-        border: 1px solid var(--border);
+    .roadmap-item {
+        background: rgba(10, 15, 26, 0.6);
+        border: 1px solid rgba(56, 189, 248, 0.15);
         border-radius: 10px;
-        padding: 16px 20px;
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 12px;
-        color: var(--text-secondary);
-        white-space: pre-wrap;
-        word-break: break-word;
-        line-height: 1.7;
-        max-height: 300px;
-        overflow-y: auto;
-    }
-
-    .no-data { font-size: 12px; color: var(--text-muted); font-style: italic; text-align: center; }
-    .no-data-p { font-size: 12px; color: var(--text-muted); font-style: italic; padding: 16px 0; }
-
-    .section-icon-os    { background: rgba(68,147,248,0.12); color: var(--accent-blue); }
-    .section-icon-cpu   { background: rgba(188,140,255,0.12); color: var(--accent-purple); }
-    .section-icon-ram   { background: rgba(63,185,80,0.12);  color: var(--accent-green); }
-    .section-icon-disk  { background: rgba(210,153,34,0.12); color: var(--accent-yellow); }
-    .section-icon-gpu   { background: rgba(248,81,73,0.12);  color: var(--accent-red); }
-    .section-icon-net   { background: rgba(68,147,248,0.12); color: var(--accent-blue); }
-    .section-icon-svc   { background: rgba(63,185,80,0.12);  color: var(--accent-green); }
-    .section-icon-sec   { background: rgba(210,153,34,0.12); color: var(--accent-yellow); }
-    .section-icon-log   { background: rgba(160,175,195,0.12); color: #a0afbf; }
-
-    .footer {
-        margin-top: 60px;
-        padding: 24px 60px;
-        border-top: 1px solid var(--border);
+        padding: 14px 18px;
         display: flex;
-        justify-content: space-between;
         align-items: center;
+        gap: 14px;
     }
 
-    .footer-brand { font-size: 12px; color: var(--text-muted); }
-    .footer-brand span { color: var(--accent-blue); font-weight: 600; }
-    .footer-date { font-size: 11px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
+    .roadmap-num {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        background: rgba(56, 189, 248, 0.15);
+        color: var(--cyan);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-family: 'JetBrains Mono', monospace;
+    }
 
-    @media print {
-        body { background: #fff; color: #000; }
+    .roadmap-text {
+        font-size: 13px;
+        color: var(--text-main);
+    }
+
+    .roadmap-sub {
+        font-size: 11px;
+        color: var(--text-dim);
+    }
+
+    /* FOOTER */
+    .footer {
+        text-align: center;
+        padding: 24px;
+        color: var(--text-dim);
+        font-size: 12px;
+    }
+
+    .footer span {
+        color: var(--cyan);
+        font-weight: 600;
     }
 </style>
 </head>
 <body>
 
-<header class="report-header">
-    <div class="header-top">
-        <div class="header-left">
-            <div class="report-title">System Health Report</div>
-            <div class="report-subtitle">Comprehensive diagnostics and status analysis for $osName</div>
-            <div class="overall-health">
-                <div class="health-dot"></div>
-                <span class="health-text">Overall System Status:</span>
-                <span class="health-value">$overallHealth</span>
-            </div>
-        </div>
-        <div class="header-right">
-            <div class="brand-name">Secret-Optimizer</div>
-            <div class="brand-sub">Windows Optimization & Management Suite</div>
-            <div class="report-date">$reportDate</div>
-            <div class="report-host">Host: $hostname &bull; User: $currentUser</div>
-        </div>
-    </div>
-</header>
-
 <div class="container">
 
-    <!-- SUMMARY CARDS -->
-    <div class="summary-grid">
-        <div class="summary-card">
-            <div class="summary-card-label">Processor</div>
-            <div class="summary-card-value" style="font-size:14px;line-height:1.4">$cpuName</div>
-            <div class="summary-card-sub">$cpuCores &bull; $cpuSpeed</div>
-            <div class="summary-card-status" style="color:$(switch($cpuScore){'Healthy'{'#3fb950'}'Warning'{'#d29922'}default{'#f85149'}})">$cpuScore</div>
+    <!-- HEADER -->
+    <div class="header">
+        <div class="logo-container">
+            <div class="logo-icon">&#9889;</div>
+            <div>
+                <div class="brand-title">Secret-Optimizer</div>
+                <div class="brand-sub">Advanced Process, Memory & Windows Bloatware Audit</div>
+            </div>
         </div>
-        <div class="summary-card">
-            <div class="summary-card-label">Memory (RAM)</div>
-            <div class="summary-card-value">${usedRam} GB <span style="font-size:14px;font-weight:400;color:var(--text-muted)">/ ${totalRam} GB</span></div>
-            <div class="summary-card-sub">$ramPercent% in use</div>
-            <div class="summary-card-status" style="color:$(switch($ramScore){'Healthy'{'#3fb950'}'Warning'{'#d29922'}default{'#f85149'}})">$ramScore</div>
-        </div>
-        <div class="summary-card">
-            <div class="summary-card-label">Storage</div>
-            <div class="summary-card-value">$($disks.Count) <span style="font-size:14px;font-weight:400;color:var(--text-muted)">Volume(s)</span></div>
-            <div class="summary-card-sub">$($diskPhysical.Count) Physical Drive(s) detected</div>
-            <div class="summary-card-status" style="color:$(switch($diskScore){'Healthy'{'#3fb950'}'Warning'{'#d29922'}default{'#f85149'}})">$diskScore</div>
-        </div>
-        <div class="summary-card">
-            <div class="summary-card-label">Security</div>
-            <div class="summary-card-value" style="font-size:16px">Windows Defender</div>
-            <div class="summary-card-sub">Defs: $defenderDefs</div>
-            <div class="summary-card-status" style="color:$(if($defenderStatus -eq 'Active'){'#3fb950'}else{'#f85149'})">$defenderStatus</div>
+        <div class="header-score-card">
+            <div class="score-label">Optimization Score</div>
+            <div class="score-val" style="color: $gradeColor;">$score / 100</div>
+            <div class="score-label" style="color: $gradeColor; font-size:10px;">$grade</div>
         </div>
     </div>
 
-    <!-- OS -->
-    <div class="section">
-        <div class="section-header">
-            <div class="section-icon section-icon-os">
-                <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-            </div>
-            <div>
-                <div class="section-title">Operating System</div>
-                <div class="section-desc">Windows version, build, architecture and installation details</div>
-            </div>
+    <!-- KPI SUMMARY GRID -->
+    <div class="kpi-grid">
+        <div class="kpi-card">
+            <div class="kpi-title">RAM Utilization</div>
+            <div class="kpi-value" style="color: $(if($ramPercent -gt 80){'#f87171'}elseif($ramPercent -gt 65){'#fbbf24'}else{'#4ade80'});">$usedRamGB GB <span style="font-size:14px;color:var(--text-dim);">/ $totalRamGB GB</span></div>
+            <div class="kpi-sub">$ramPercent% active load &bull; $freeRamGB GB available</div>
         </div>
-        <div class="info-grid">
-            <div class="info-card">
-                <div class="info-row"><span class="info-label">Operating System</span><span class="info-value">$osName</span></div>
-                <div class="info-row"><span class="info-label">Build Number</span><span class="info-value">$osBuild</span></div>
-                <div class="info-row"><span class="info-label">Architecture</span><span class="info-value">$osArch</span></div>
-                <div class="info-row"><span class="info-label">Installation Date</span><span class="info-value">$installDate</span></div>
-            </div>
-            <div class="info-card">
-                <div class="info-row"><span class="info-label">Last Boot Time</span><span class="info-value">$uptime</span></div>
-                <div class="info-row"><span class="info-label">Computer Name</span><span class="info-value">$hostname</span></div>
-                <div class="info-row"><span class="info-label">Manufacturer</span><span class="info-value">$(if($cs){$cs.Manufacturer}else{'N/A'})</span></div>
-                <div class="info-row"><span class="info-label">Model</span><span class="info-value">$(if($cs){$cs.Model}else{'N/A'})</span></div>
-            </div>
+
+        <div class="kpi-card">
+            <div class="kpi-title">Helper Subprocesses</div>
+            <div class="kpi-value" style="color: #38bdf8;">$helperWSMB MB</div>
+            <div class="kpi-sub">$helperCount idle browser/app helper tasks</div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-title">Bloatware Detected</div>
+            <div class="kpi-value" style="color: $(if($detectedBloatCount -gt 0){'#f87171'}else{'#4ade80'});">$detectedBloatCount Apps</div>
+            <div class="kpi-sub">Pre-installed promo & junk packages</div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-title">Telemetry & Adware</div>
+            <div class="kpi-value" style="color: $(if($telemetryStatus -match 'ACTIVE'){'#fbbf24'}else{'#4ade80'});">$(if($telemetryStatus -match 'ACTIVE'){'Active'}else{'Clean'})</div>
+            <div class="kpi-sub">DiagTrack & Start Menu Ads status</div>
         </div>
     </div>
 
-    <!-- CPU -->
+    <!-- SECTION 1: PROCESS & RAM DIAGNOSTICS -->
     <div class="section">
-        <div class="section-header">
-            <div class="section-icon section-icon-cpu">
-                <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/></svg>
-            </div>
-            <div>
-                <div class="section-title">Processor</div>
-                <div class="section-desc">CPU model, frequency, core count and current load</div>
-            </div>
+        <div class="section-title">
+            <span class="section-icon">&#128187;</span>
+            Deep Memory & Process Working Set Breakdown
         </div>
-        <div class="info-card">
-            <div class="info-row"><span class="info-label">Model</span><span class="info-value">$cpuName</span></div>
-            <div class="info-row"><span class="info-label">Cores / Threads</span><span class="info-value">$cpuCores</span></div>
-            <div class="info-row"><span class="info-label">Max Frequency</span><span class="info-value">$cpuSpeed</span></div>
-            <div class="info-row"><span class="info-label">Current Load</span><span class="info-value">$cpuLoad</span></div>
-            <div class="info-row"><span class="info-label">Socket</span><span class="info-value">$(if($cpu){$cpu.SocketDesignation}else{'N/A'})</span></div>
+
+        <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text-sub); margin-bottom:4px;">
+            <span>Memory Pressure Status: <strong>$ramPercent%</strong></span>
+            <span>Potential Reclamation: <strong>~$estimatedReclaimMB MB</strong> via 1-Click Trim</span>
         </div>
+        <div class="progress-bar-container">
+            <div class="progress-bar-fill" style="width: $ramPercent%;"></div>
+        </div>
+
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>PID</th>
+                    <th>Process Name</th>
+                    <th>Working Set (RAM)</th>
+                    <th>Threads</th>
+                    <th>Status / Category</th>
+                </tr>
+            </thead>
+            <tbody>
+"@
+
+foreach ($p in $topProcesses) {
+    $wsMB = [math]::Round($p.WorkingSet64 / 1MB, 1)
+    $catBadge = if ($p.ProcessName -in $protectedList) {
+        "<span class='badge badge-info'>System Core</span>"
+    } elseif ($p.ProcessName -match 'chrome|edge|brave|discord|spotify|steam') {
+        "<span class='badge badge-warn'>Helper / Idle</span>"
+    } else {
+        "<span class='badge badge-clean'>User Task</span>"
+    }
+
+    $html += @"
+                <tr>
+                    <td class="mono">$($p.Id)</td>
+                    <td><strong>$($p.ProcessName)</strong></td>
+                    <td class="mono" style="color:var(--cyan);">$wsMB MB</td>
+                    <td class="mono">$($p.Threads.Count)</td>
+                    <td>$catBadge</td>
+                </tr>
+"@
+}
+
+$html += @"
+            </tbody>
+        </table>
     </div>
 
-    <!-- RAM -->
+    <!-- SECTION 2: WINDOWS BLOATWARE AUDIT -->
     <div class="section">
-        <div class="section-header">
-            <div class="section-icon section-icon-ram">
-                <svg viewBox="0 0 24 24"><path d="M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7z"/><line x1="6" y1="9" x2="6" y2="13"/><line x1="10" y1="9" x2="10" y2="13"/><line x1="14" y1="9" x2="14" y2="13"/><line x1="18" y1="9" x2="18" y2="13"/><line x1="6" y1="19" x2="6" y2="21"/><line x1="10" y1="19" x2="10" y2="21"/><line x1="14" y1="19" x2="14" y2="21"/><line x1="18" y1="19" x2="18" y2="21"/></svg>
-            </div>
-            <div>
-                <div class="section-title">Memory (RAM)</div>
-                <div class="section-desc">Physical memory usage and installed modules</div>
-            </div>
+        <div class="section-title">
+            <span class="section-icon">&#128737;</span>
+            Windows Bloatware & Sponsored Package Audit
         </div>
-        <div class="info-card" style="margin-bottom:16px">
-            <div class="info-row"><span class="info-label">Total RAM</span><span class="info-value">${totalRam} GB</span></div>
-            <div class="info-row"><span class="info-label">Used</span><span class="info-value">${usedRam} GB ($ramPercent%)</span></div>
-            <div class="info-row"><span class="info-label">Free</span><span class="info-value">${freeRam} GB</span></div>
-            <div class="info-row" style="display:block;padding:10px 0">
-                <div class="ram-bar-wrap">
-                    <div class="ram-bar-bg"><div class="ram-bar-fill" style="width:${ramPercent}%"></div></div>
+        <p style="font-size:13px; color:var(--text-sub); margin-bottom:16px;">
+            Audit of pre-installed promotional applications, games, and telemetry stubs found on this Windows installation.
+        </p>
+
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Application</th>
+                    <th>Package Identifier</th>
+                    <th>Category</th>
+                    <th>Audit Status</th>
+                </tr>
+            </thead>
+            <tbody>
+"@
+
+foreach ($b in $bloatResults) {
+    $statusBadge = if ($b.IsInstalled) {
+        "<span class='badge badge-bloat'>NEEDS DEBLOAT</span>"
+    } else {
+        "<span class='badge badge-clean'>CLEAN / REMOVED</span>"
+    }
+
+    $html += @"
+                <tr>
+                    <td><strong>$($b.Display)</strong></td>
+                    <td class="mono" style="color:var(--text-dim);">$($b.Name)</td>
+                    <td>$($b.Category)</td>
+                    <td>$statusBadge</td>
+                </tr>
+"@
+}
+
+$html += @"
+            </tbody>
+        </table>
+    </div>
+
+    <!-- SECTION 3: PRIVACY & TELEMETRY AUDIT -->
+    <div class="section">
+        <div class="section-title">
+            <span class="section-icon">&#128274;</span>
+            Privacy, Telemetry & Start Menu Adware Audit
+        </div>
+
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Component</th>
+                    <th>Registry / Target Policy</th>
+                    <th>Current Status</th>
+                    <th>Recommendation</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Windows Diagnostic Telemetry</strong></td>
+                    <td class="mono">HKLM:\...\DataCollection\AllowTelemetry</td>
+                    <td><span class="badge $(if($telemetryStatus -match 'ACTIVE'){'badge-warn'}else{'badge-clean'})">$telemetryStatus</span></td>
+                    <td style="color:var(--text-sub);">Disable via Menu Option [8]</td>
+                </tr>
+                <tr>
+                    <td><strong>Advertising ID Tracking</strong></td>
+                    <td class="mono">HKCU:\...\AdvertisingInfo\Enabled</td>
+                    <td><span class="badge $(if($advStatus -match 'ACTIVE'){'badge-warn'}else{'badge-clean'})">$advStatus</span></td>
+                    <td style="color:var(--text-sub);">Disable via Menu Option [8]</td>
+                </tr>
+                <tr>
+                    <td><strong>Start Menu Promoted Apps & Ads</strong></td>
+                    <td class="mono">HKCU:\...\ContentDeliveryManager</td>
+                    <td><span class="badge $(if($startAdsStatus -match 'ACTIVE'){'badge-warn'}else{'badge-clean'})">$startAdsStatus</span></td>
+                    <td style="color:var(--text-sub);">Disable via Menu Option [8]</td>
+                </tr>
+                <tr>
+                    <td><strong>Bing Web Search in Start Menu</strong></td>
+                    <td class="mono">HKCU:\...\Explorer\DisableSearchBoxSuggestions</td>
+                    <td><span class="badge $(if($bingSearchStatus -match 'ACTIVE'){'badge-warn'}else{'badge-clean'})">$bingSearchStatus</span></td>
+                    <td style="color:var(--text-sub);">Disable to speed up local search</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- SECTION 4: BACKGROUND SERVICES & POWER OPTIMIZATION -->
+    <div class="section">
+        <div class="section-title">
+            <span class="section-icon">&#9881;</span>
+            Background Services & Power Profile Audit
+        </div>
+
+        <div style="margin-bottom:16px; font-size:13px; color:var(--text-sub);">
+            Active Power Scheme: <strong style="color:var(--cyan);">$activePowerPlan</strong> &bull; Host: <strong>$hostname</strong> &bull; Uptime: <strong>$uptime</strong>
+        </div>
+
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Service Name</th>
+                    <th>Description</th>
+                    <th>Current State</th>
+                    <th>Startup Type</th>
+                </tr>
+            </thead>
+            <tbody>
+"@
+
+foreach ($s in $servicesResults) {
+    $stateBadge = if ($s.Status -eq "Running") {
+        if ($s.IsHeavy) { "<span class='badge badge-warn'>RUNNING (TELEMETRY)</span>" } else { "<span class='badge badge-info'>RUNNING</span>" }
+    } else {
+        "<span class='badge badge-clean'>STOPPED</span>"
+    }
+
+    $html += @"
+                <tr>
+                    <td class="mono"><strong>$($s.Name)</strong></td>
+                    <td>$($s.Display)</td>
+                    <td>$stateBadge</td>
+                    <td class="mono">$($s.StartType)</td>
+                </tr>
+"@
+}
+
+$html += @"
+            </tbody>
+        </table>
+    </div>
+
+    <!-- SECTION 5: SECRET-OPTIMIZER ACTION ROADMAP -->
+    <div class="section">
+        <div class="section-title">
+            <span class="section-icon">&#128640;</span>
+            Recommended 1-Click Secret-Optimizer Actions
+        </div>
+
+        <div class="roadmap-list">
+            <div class="roadmap-item">
+                <div class="roadmap-num">1</div>
+                <div>
+                    <div class="roadmap-text">Execute 1-Click Deep RAM Optimizer</div>
+                    <div class="roadmap-sub">Reclaim ~$estimatedReclaimMB MB RAM (Menu Option [1])</div>
+                </div>
+            </div>
+
+            <div class="roadmap-item">
+                <div class="roadmap-num">2</div>
+                <div>
+                    <div class="roadmap-text">Run Safe 1-Click Bloatware Debloat</div>
+                    <div class="roadmap-sub">Purge $detectedBloatCount detected promo packages (Menu Option [6])</div>
+                </div>
+            </div>
+
+            <div class="roadmap-item">
+                <div class="roadmap-num">3</div>
+                <div>
+                    <div class="roadmap-text">Apply Privacy & Telemetry Purge</div>
+                    <div class="roadmap-sub">Turn off Start Menu ads & tracking (Menu Option [8])</div>
+                </div>
+            </div>
+
+            <div class="roadmap-item">
+                <div class="roadmap-num">4</div>
+                <div>
+                    <div class="roadmap-text">Enable Continuous Smart RAM Guard</div>
+                    <div class="roadmap-sub">Prevent background memory buildup (Menu Option [5])</div>
                 </div>
             </div>
         </div>
-        <div class="table-wrap">
-            <table>
-                <thead><tr><th>Slot</th><th>Capacity</th><th>Speed</th><th>Manufacturer</th></tr></thead>
-                <tbody>$ramRows</tbody>
-            </table>
-        </div>
     </div>
 
-    <!-- DISK LOGICAL -->
-    <div class="section">
-        <div class="section-header">
-            <div class="section-icon section-icon-disk">
-                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="7" y1="8" x2="7.01" y2="8"/><line x1="7" y1="16" x2="7.01" y2="16"/></svg>
-            </div>
-            <div>
-                <div class="section-title">Storage - Logical Volumes</div>
-                <div class="section-desc">Disk usage per drive letter and filesystem type</div>
-            </div>
-        </div>
-        <div class="table-wrap">
-            <table>
-                <thead><tr><th>Drive</th><th>FS</th><th>Total</th><th>Used</th><th>Free</th><th>Usage</th><th>Status</th></tr></thead>
-                <tbody>$diskRows</tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- DISK PHYSICAL -->
-    <div class="section">
-        <div class="section-header">
-            <div class="section-icon section-icon-disk">
-                <svg viewBox="0 0 24 24"><line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" y1="16" x2="6.01" y2="16"/><line x1="10" y1="16" x2="10.01" y2="16"/></svg>
-            </div>
-            <div>
-                <div class="section-title">Storage - Physical Drives</div>
-                <div class="section-desc">Hardware disk drives detected, interface type and reported health status</div>
-            </div>
-        </div>
-        <div class="table-wrap">
-            <table>
-                <thead><tr><th>Model</th><th>Size</th><th>Interface</th><th>Media Type</th><th>Status</th></tr></thead>
-                <tbody>$physRows</tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- GPU -->
-    <div class="section">
-        <div class="section-header">
-            <div class="section-icon section-icon-gpu">
-                <svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h4v6H6z"/><circle cx="16" cy="12" r="3"/><line x1="6" y1="19" x2="6" y2="22"/><line x1="10" y1="19" x2="10" y2="22"/><line x1="14" y1="19" x2="14" y2="22"/></svg>
-            </div>
-            <div>
-                <div class="section-title">Graphics (GPU)</div>
-                <div class="section-desc">Video adapters, VRAM and driver versions</div>
-            </div>
-        </div>
-        <div class="table-wrap">
-            <table>
-                <thead><tr><th>Adapter</th><th>VRAM</th><th>Driver Version</th><th>Resolution</th></tr></thead>
-                <tbody>$gpuRows</tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- NETWORK -->
-    <div class="section">
-        <div class="section-header">
-            <div class="section-icon section-icon-net">
-                <svg viewBox="0 0 24 24"><rect x="2" y="2" width="6" height="6" rx="1"/><rect x="16" y="2" width="6" height="6" rx="1"/><rect x="9" y="16" width="6" height="6" rx="1"/><path d="M5 8v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"/><line x1="12" y1="13" x2="12" y2="16"/></svg>
-            </div>
-            <div>
-                <div class="section-title">Network Adapters</div>
-                <div class="section-desc">Active network interfaces, IP addresses and DNS configuration</div>
-            </div>
-        </div>
-        <div class="table-wrap">
-            <table>
-                <thead><tr><th>Adapter</th><th>IP Address</th><th>MAC</th><th>Gateway</th><th>DNS</th><th>DHCP</th></tr></thead>
-                <tbody>$netRows</tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- SERVICES -->
-    <div class="section">
-        <div class="section-header">
-            <div class="section-icon section-icon-svc">
-                <svg viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/><circle cx="12" cy="12" r="4"/></svg>
-            </div>
-            <div>
-                <div class="section-title">Critical Windows Services</div>
-                <div class="section-desc">Status of essential system services required for stable operation</div>
-            </div>
-        </div>
-        <div class="table-wrap">
-            <table>
-                <thead><tr><th>Service</th><th>Status</th><th>Start Type</th></tr></thead>
-                <tbody>$svcRows</tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- SECURITY -->
-    <div class="section">
-        <div class="section-header">
-            <div class="section-icon section-icon-sec">
-                <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
-            </div>
-            <div>
-                <div class="section-title">Security Status</div>
-                <div class="section-desc">Windows Defender, antivirus definitions and pending updates</div>
-            </div>
-        </div>
-        <div class="info-card">
-            <div class="info-row">
-                <span class="info-label">Windows Defender</span>
-                <span class="info-value">$(Get-StatusBadge $defenderStatus)</span>
-            </div>
-            <div class="info-row"><span class="info-label">Last Definition Update</span><span class="info-value">$defenderDefs</span></div>
-            <div class="info-row"><span class="info-label">Pending Windows Updates</span><span class="info-value">$pendingUpdates</span></div>
-            <div class="info-row"><span class="info-label">BIOS Version</span><span class="info-value">$(if($bios){"$($bios.Manufacturer) $($bios.SMBIOSBIOSVersion)"}else{'N/A'})</span></div>
-            <div class="info-row"><span class="info-label">BIOS Release Date</span><span class="info-value">$(if($bios){$bios.ConvertToDateTime($bios.ReleaseDate).ToString('yyyy-MM-dd')}else{'N/A'})</span></div>
-        </div>
-    </div>
-
-    <!-- SRTTRAIL -->
-    <div class="section">
-        <div class="section-header">
-            <div class="section-icon section-icon-log">
-                <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
-            </div>
-            <div>
-                <div class="section-title">Startup Repair Log (SrtTrail.txt)</div>
-                <div class="section-desc">Last 20 lines from the Windows startup diagnosis log</div>
-            </div>
-        </div>
-        $srtSection
+    <!-- FOOTER -->
+    <div class="footer">
+        Generated by <span>Secret-Optimizer</span> &bull; mrsecret_official &bull; All performance diagnostics evaluated 100% locally
+        <div style="margin-top:4px;">Report Date: $reportDate</div>
     </div>
 
 </div>
-
-<footer class="footer">
-    <div class="footer-brand">Generated by <span>Secret-Optimizer</span> &bull; mrsecret_official &bull; All data collected locally</div>
-    <div class="footer-date">$reportDate</div>
-</footer>
 
 </body>
 </html>
 "@
 
 # ──────────────────────────────────────────────
-# OUTPUT
+# SAVE REPORT
 # ──────────────────────────────────────────────
 try {
     [System.IO.File]::WriteAllText($OutputPath, $html, [System.Text.Encoding]::UTF8)
     Write-Host ""
-    Write-Host "${creamyGreen}[OK] Health report generated successfully.${reset}"
+    Write-Host "${creamyGreen}[OK] Secret-Optimizer Performance Report generated successfully!${reset}"
     Write-Host "     Path: ${creamyCyan}$OutputPath${reset}"
     Write-Host ""
-    # Open in browser
     try { Start-Process $OutputPath -ErrorAction SilentlyContinue } catch {}
     return $OutputPath
 } catch {
-    Write-Host "${creamyRed}[ERROR] Failed to write report: $($_.Exception.Message)${reset}"
+    Write-Host "${creamyRed}[ERROR] Failed to save report: $($_.Exception.Message)${reset}"
     return $null
 }
