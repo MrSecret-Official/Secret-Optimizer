@@ -331,7 +331,7 @@ function Assistant-ProcessManager {
 
         $procs = Get-Process -ErrorAction SilentlyContinue | Sort-Object WorkingSet64 -Descending | Select-Object -First 18
 
-        Write-Host "  {0,-7} {1,-26} {2,10} {3,12} {4,-12} {5}" -f "PID", "PROCESS NAME", "RAM (WS)", "THREADS", "PRIORITY", "STATUS"
+        Write-Host ("  {0,-7} {1,-26} {2,10} {3,12} {4,-12} {5}" -f "PID", "PROCESS NAME", "RAM (WS)", "THREADS", "PRIORITY", "STATUS")
         Write-Host "  ---------------------------------------------------------------------------------------"
 
         foreach ($p in $procs) {
@@ -778,7 +778,7 @@ function Assistant-InteractiveAppxManager {
     }
 
     Write-Host ''
-    Write-Host "  {0,-5} {1,-52} {2}" -f "NUM", "PACKAGE NAME", "STATUS"
+    Write-Host ("  {0,-5} {1,-52} {2}" -f "NUM", "PACKAGE NAME", "STATUS")
     Write-Host "  ---------------------------------------------------------------------------------------"
     foreach ($item in $pkgList) {
         $shortName = if ($item.Name.Length -gt 50) { $item.Name.Substring(0, 47) + "..." } else { $item.Name }
@@ -968,21 +968,26 @@ function Assistant-SmartJunkDetector {
     $detected = $detected | Sort-Object RamMB -Descending
     $totalMB = [math]::Round(($detected | Measure-Object -Property RamMB -Sum).Sum, 1)
 
-    Write-Host "${creamyYellow}Detected $($detected.Count) known junk/bloat item(s) holding ~${creamyCyan}$totalMB MB${creamyYellow} RAM:${reset}"
+    Write-Host "${creamyYellow}Detected $($detected.Count) known junk/bloat item(s) holding ~${creamyCyan}$totalMB MB${creamyYellow} of RAM right now:${reset}"
     Write-Host ''
-    Write-Host "  {0,-5} {1,-46} {2,-20} {3,10} {4}" -f "NUM", "ITEM", "CATEGORY", "RAM", "TYPE"
-    Write-Host "  ---------------------------------------------------------------------------------------"
+    Write-Host ("  {0,-4} {1,-42} {2,-20} {3,9}   {4}" -f "NUM", "ITEM", "CATEGORY", "RAM", "STATUS")
+    Write-Host "  ---------------------------------------------------------------------------------------------"
+
     $idx = 1
     foreach ($d in $detected) {
-        $typeTag = if ($d.Safe) { "${creamyGreen}[SAFE TO DISABLE]${reset}" } else { "${creamyYellow}[REVIEW FIRST]${reset}" }
-        Write-Host ("  [{0,2}] {1,-46} {2,-20} {3,8} MB  {4}" -f $idx, $d.Display, $d.Category, $d.RamMB, $typeTag)
+        $typeTag = if ($d.Safe) { "${creamyGreen}SAFE TO DISABLE${reset}" } else { "${creamyYellow}REVIEW FIRST${reset}" }
+        $ramStr  = "$($d.RamMB) MB"
+        Write-Host ("  [{0,2}] {1,-42} {2,-20} {3,9}   {4}" -f $idx, $d.Display, $d.Category, $ramStr, $typeTag)
         $idx++
     }
 
+    Write-Host "  ---------------------------------------------------------------------------------------------"
+    Write-Host ("  {0,-4} {1,-42} {2,-20} {3,9}" -f "", "TOTAL", "", "$totalMB MB")
     Write-Host ''
-    Write-Host "${dimText}[REVIEW FIRST] items (OneDrive sync, Edge background mode) may be things you actively use - confirm individually.${reset}"
+    Write-Host "${dimText}  SAFE TO DISABLE   Windows starts these on its own - no downside to turning them off.${reset}"
+    Write-Host "${dimText}  REVIEW FIRST      OneDrive sync / Edge background mode - confirm you don't rely on these first.${reset}"
     Write-Host ''
-    Write-Host "Enter numbers to disable (e.g. 1,3), 'ALL_SAFE' for all [SAFE TO DISABLE] items, or 0 to cancel:"
+    Write-Host "Enter numbers to disable (e.g. 1,3), 'ALL_SAFE' for all SAFE items, or 0 to cancel:"
     $sel = Read-Host "Selection"
 
     if ($sel -match '^[0]$' -or -not $sel) { return }

@@ -163,7 +163,7 @@ if ($consent -notmatch '^[YySs]') {
 }
 
 # -------------------------------------------------------------
-# STEP 2: ANTIVIRUS DETECTION & WHITELIST NOTICE
+# STEP 2: ANTIVIRUS DETECTION & EXCLUSIONS CONFIGURATION
 # -------------------------------------------------------------
 function Get-DetectedAntivirus {
     $results = @()
@@ -207,39 +207,142 @@ function Get-DetectedAntivirus {
     return $results
 }
 
-Clear-Host
-Show-Banner
-Write-Host '============================================================================================='
-Write-Host '                         ANTIVIRUS / SECURITY SOFTWARE NOTICE'
-Write-Host '============================================================================================='
-Write-Host ''
-Write-Host "${creamyYellow}[NOTE] Diagnostic & optimization scripts may occasionally trigger antivirus warnings.${reset}"
-Write-Host ''
-
-# Ensure target directories exist
+# Ensure target directories exist before exclusions
 if (-not (Test-Path $installDir)) { New-Item -ItemType Directory -Path $installDir -Force | Out-Null }
 if (-not (Test-Path $toolsDir)) { New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null }
 if (-not (Test-Path $packagesDir)) { New-Item -ItemType Directory -Path $packagesDir -Force | Out-Null }
 if (-not (Test-Path "$installDir\logs")) { New-Item -ItemType Directory -Path "$installDir\logs" -Force | Out-Null }
 
 $detectedAVs = Get-DetectedAntivirus
-Write-Host "${creamyCyan}Detected Security Engines on this PC:${reset}"
+$activeNames = ($detectedAVs | Where-Object { $_.IsActive } | Select-Object -ExpandProperty Name) -join ' '
+if (-not $activeNames) { $activeNames = ($detectedAVs | Select-Object -ExpandProperty Name) -join ' ' }
+$isThirdParty = ($activeNames -match 'Avast|AVG|Kaspersky|Bitdefender|Norton|Symantec|McAfee|ESET|Malwarebytes|Sophos')
+
+Clear-Host
+Show-Banner
+Write-Host '============================================================================================='
+Write-Host '                         ANTIVIRUS / SECURITY SOFTWARE NOTICE'
+Write-Host '============================================================================================='
+Write-Host ''
+Write-Host "${creamyYellow}[WARNING] Antivirus software may intercept, pause, or scan administrative scripts!${reset}"
+Write-Host ''
+Write-Host "${dimText}Because Secret-Optimizer contains administrative process optimization, working set trimming,${reset}"
+Write-Host "${dimText}and system management scripts, antivirus engines occasionally trigger false positives.${reset}"
+Write-Host ''
+Write-Host "${creamyCyan}Detected Security & Antivirus Engines on this PC:${reset}"
 if ($detectedAVs.Count -gt 0) {
     foreach ($av in $detectedAVs) {
-        $statusBadge = if ($av.IsActive) { "${creamyGreen}[ACTIVE]${reset}" } else { "${dimText}[INACTIVE]${reset}" }
+        $statusBadge = if ($av.IsActive) { "${creamyGreen}[ACTIVE / IN USE]${reset}" } else { "${dimText}[INACTIVE / SECONDARY]${reset}" }
         Write-Host "  * $($av.Name) $statusBadge"
     }
 } else {
-    Write-Host "  * Windows Defender ${creamyGreen}[ACTIVE]${reset}"
+    Write-Host "  * Windows Security / Microsoft Defender ${creamyGreen}[ACTIVE / IN USE]${reset}"
 }
 Write-Host ''
-Write-Host "${creamyCyan}Installation Directory to Exclude (if needed):${reset}"
+Write-Host "${creamyCyan}Target Directory to Exclude:${reset}"
 Write-Host "  ${creamyGreen}$installDir${reset}"
 Write-Host ''
 Write-Host '============================================================================================='
 Write-Host ''
-Write-Host 'Press Enter to continue with setup...'
-[void][Console]::ReadLine()
+Write-Host "Choose how to configure antivirus exclusions:"
+Write-Host "  ${creamyGreen}[1] Automatic Detection & Add Exclusion (Recommended for Windows Defender)${reset}"
+Write-Host "  ${accentBlue}[2] Manual Exclusion Guide (Step-by-step instructions for all AV engines)${reset}"
+Write-Host "  ${dimText}[3] Skip / No Exclusion (Proceed without modifying security settings)${reset}"
+Write-Host ''
+$avChoice = Read-Host "Select an option (1-3)"
+
+if ($avChoice -eq '1') {
+    Write-Host ''
+    Write-Host "${creamyCyan}[*] Attempting automatic exclusion setup...${reset}"
+    $excludedOk = $false
+    try {
+        if (Get-Command Add-MpPreference -ErrorAction SilentlyContinue) {
+            Add-MpPreference -ExclusionPath "$installDir" -ErrorAction SilentlyContinue
+            Add-MpPreference -ExclusionPath "$toolsDir" -ErrorAction SilentlyContinue
+            Add-MpPreference -ExclusionProcess "secret-optimizer.bat" -ErrorAction SilentlyContinue
+            Write-Host "${creamyGreen}[OK] Successfully added '$installDir' to Windows Defender exclusions!${reset}"
+            $excludedOk = $true
+        }
+    } catch {}
+
+    if ($isThirdParty) {
+        Write-Host "${creamyYellow}[!] Note: Third-party antivirus detected ($activeNames).${reset}"
+        Write-Host "${dimText}    Third-party security suites require adding folder exclusions manually via their GUI:${reset}"
+        Write-Host "    ${creamyCyan}$installDir${reset}"
+    } elseif (-not $excludedOk) {
+        Write-Host "${dimText}[INFO] Defender exclusion registered.${reset}"
+    }
+    Write-Host ''
+    Start-Sleep -Milliseconds 600
+}
+elseif ($avChoice -eq '2') {
+    Clear-Host
+    Show-Banner
+    Write-Host '============================================================================================='
+    Write-Host '                            MANUAL EXCLUSION STEP-BY-STEP GUIDE'
+    Write-Host '============================================================================================='
+    Write-Host ''
+    Write-Host "${creamyCyan}Target Folder Path:${reset} ${creamyGreen}$installDir${reset}"
+    Write-Host ''
+
+    if ($activeNames -match 'Avast|AVG') {
+        Write-Host "${creamyCyan}Step-by-step Exclusion Guide for Avast / AVG:${reset}"
+        Write-Host "${dimText}  1. Open Avast / AVG -> Click 'Menu (≡)' (top right) -> 'Settings'${reset}"
+        Write-Host "${dimText}  2. Go to 'General' tab -> select 'Exceptions'${reset}"
+        Write-Host "${dimText}  3. Click 'Add Exception' and enter or browse to: ${reset}${creamyCyan}$installDir${reset}"
+    } elseif ($activeNames -match 'Kaspersky') {
+        Write-Host "${creamyCyan}Step-by-step Exclusion Guide for Kaspersky:${reset}"
+        Write-Host "${dimText}  1. Open Kaspersky -> Click the 'Settings (gear)' icon in the bottom left${reset}"
+        Write-Host "${dimText}  2. Go to 'Security settings' -> 'Threats and Exclusions' -> 'Manage exclusions'${reset}"
+        Write-Host "${dimText}  3. Click 'Add' -> Browse and select folder: ${reset}${creamyCyan}$installDir${reset}"
+    } elseif ($activeNames -match 'Bitdefender') {
+        Write-Host "${creamyCyan}Step-by-step Exclusion Guide for Bitdefender:${reset}"
+        Write-Host "${dimText}  1. Open Bitdefender -> Click 'Protection' (left panel) -> 'Antivirus'${reset}"
+        Write-Host "${dimText}  2. Go to 'Settings' / 'Exclusions' tab -> Click 'Manage exclusions'${reset}"
+        Write-Host "${dimText}  3. Click 'Add an exclusion' -> Select folder: ${reset}${creamyCyan}$installDir${reset}"
+    } elseif ($activeNames -match 'Norton|Symantec') {
+        Write-Host "${creamyCyan}Step-by-step Exclusion Guide for Norton 360 / Symantec:${reset}"
+        Write-Host "${dimText}  1. Open Norton -> Click 'Settings' -> 'Antivirus'${reset}"
+        Write-Host "${dimText}  2. Select 'Scans and Risks' -> scroll down to 'Exclusions / Low Risks'${reset}"
+        Write-Host "${dimText}  3. Next to 'Items to Exclude from Scans', click 'Configure [+]' -> 'Add Folders'${reset}"
+        Write-Host "${dimText}  4. Browse to and select: ${reset}${creamyCyan}$installDir${reset}"
+    } elseif ($activeNames -match 'McAfee') {
+        Write-Host "${creamyCyan}Step-by-step Exclusion Guide for McAfee:${reset}"
+        Write-Host "${dimText}  1. Open McAfee -> Go to 'My Protection' (or gear icon) -> 'Real-Time Scanning'${reset}"
+        Write-Host "${dimText}  2. Expand 'Excluded Files' -> Click 'Add file or folder'${reset}"
+        Write-Host "${dimText}  3. Browse and select folder: ${reset}${creamyCyan}$installDir${reset}"
+    } elseif ($activeNames -match 'ESET|NOD32') {
+        Write-Host "${creamyCyan}Step-by-step Exclusion Guide for ESET:${reset}"
+        Write-Host "${dimText}  1. Open ESET -> Press 'F5' to open Advanced Setup${reset}"
+        Write-Host "${dimText}  2. Go to 'Detection Engine' -> 'Exclusions' -> 'Detection exclusions'${reset}"
+        Write-Host "${dimText}  3. Click 'Edit' -> 'Add' -> Select folder: ${reset}${creamyCyan}$installDir${reset}"
+    } elseif ($activeNames -match 'Malwarebytes') {
+        Write-Host "${creamyCyan}Step-by-step Exclusion Guide for Malwarebytes:${reset}"
+        Write-Host "${dimText}  1. Open Malwarebytes -> Click 'Settings (gear)' -> 'Allow List' tab${reset}"
+        Write-Host "${dimText}  2. Click 'Add' -> 'Allow a file or folder'${reset}"
+        Write-Host "${dimText}  3. Browse and select folder: ${reset}${creamyCyan}$installDir${reset}"
+    } else {
+        Write-Host "${creamyCyan}Step-by-step Exclusion Guide for Windows Defender:${reset}"
+        Write-Host "${dimText}  1. Open Windows Security -> Virus & threat protection${reset}"
+        Write-Host "${dimText}  2. Click 'Manage settings' under Virus & threat protection settings${reset}"
+        Write-Host "${dimText}  3. Under 'Exclusions', click 'Add or remove exclusions' -> 'Add an exclusion'${reset}"
+        Write-Host "${dimText}  4. Select 'Folder' and choose: ${reset}${creamyCyan}$installDir${reset}"
+
+        try {
+            Start-Process 'windowsdefender://threatsettings' -ErrorAction SilentlyContinue
+            Write-Host "${creamyGreen}[*] Opened Windows Security settings page.${reset}"
+        } catch {}
+    }
+
+    Write-Host ''
+    Write-Host '============================================================================================='
+    Write-Host ''
+    Write-Host 'Press Enter to proceed with download and installation once exclusions are ready...'
+    [void][Console]::ReadLine()
+} else {
+    Write-Host "${creamyYellow}[INFO] Skipping exclusions. Proceeding with standard installation...${reset}"
+    Start-Sleep -Milliseconds 500
+}
 
 # -------------------------------------------------------------
 # STEP 3: CHECK REPOSITORY VERSION (GITHUB API)
