@@ -1326,20 +1326,22 @@ while ($true) {
     Write-Host "  ${creamyYellow}--- CONTROLLED WINDOWS DEBLOATER ---${reset}"
     Write-Host "  ${creamyGreen}[6] Safe 1-Click Recommended Debloat (Sponsored Apps, Junk Games, Stubs & Promo Items)${reset}"
     Write-Host "  ${accentBlue}[7] Controlled Custom AppX Package Manager (Granular Selection, Search & Uninstall)${reset}"
-    Write-Host "  ${creamyGreen}[S] Smart Windows Junk & RAM-Hog Detector (Auto-detect & disable background bloat)${reset}"
     Write-Host "  ${accentBlue}[8] Windows Telemetry, Diagnostic Tracking & Start Menu Ads Purge (Registry Optimization)${reset}"
     Write-Host "  ${accentBlue}[9] Windows Non-Essential Background Services Optimizer (Safe / Gaming Presets)${reset}"
     Write-Host "  ${accentBlue}[R] Default Apps & Package Recovery Center (1-Click Reinstall & Restore Guide)${reset}"
     Write-Host ''
+    Write-Host "  ${creamyYellow}--- SMART WINDOWS JUNK & RAM-HOG DETECTOR ---${reset}"
+    Write-Host "  ${creamyGreen}[S] Smart Windows Junk & RAM-Hog Detector (Auto-detect & disable background bloat)${reset}"
+    Write-Host ''
     Write-Host "  ${creamyYellow}--- SYSTEM HEALTH & TOOLS ---${reset}"
     Write-Host "  ${creamyCyan}[H] Generate Comprehensive HTML Health & Performance Report${reset}"
     Write-Host "  ${accentBlue}[P] System Restore Point Center (Create / List / Roll Back)${reset}"
-    Write-Host "  ${accentBlue}[0] Optimization Action History & Logs Viewer${reset}"
-    Write-Host "  ${dimText}[X] Exit${reset}"
+    Write-Host "  ${accentBlue}[L] Optimization Action History & Logs Viewer${reset}"
+    Write-Host "  ${creamyRed}[0] Exit${reset}"
     Write-Host ''
     Write-Host '============================================================================================='
     Write-Host ''
-    $choice = Read-Host "Select an option (1-9, S, R, H, P, 0, X)"
+    $choice = Read-Host "Select an option (1-9, S, R, H, P, L, 0)"
 
     switch ($choice.Trim()) {
         '1' { Assistant-RamOptimizer }
@@ -1349,14 +1351,14 @@ while ($true) {
         '5' { Assistant-ContinuousGuard }
         '6' { Assistant-Debloat }
         '7' { Assistant-InteractiveAppxManager }
-        { $_ -in 'S','s' } { Assistant-SmartJunkDetector }
         '8' { Assistant-TelemetryPurge }
         '9' { Assistant-ServicesOptimizer }
+        { $_ -in 'S','s' } { Assistant-SmartJunkDetector }
         { $_ -in 'R','r' } { Assistant-PackageRecovery }
         { $_ -in 'H','h' } { Assistant-HealthReport }
         { $_ -in 'P','p' } { Assistant-RestorePoints }
-        '0' { Assistant-ViewLogs }
-        { $_ -in 'X','x' } { exit 0 }
+        { $_ -in 'L','l' } { Assistant-ViewLogs }
+        { $_ -in '0','X','x','q','Q' } { exit 0 }
         default {
             Write-Host "${creamyRed}Invalid option.${reset}"
             Start-Sleep -Seconds 1
