@@ -1,0 +1,18 @@
+
+# Cache files (legacy — no longer used since the login system was removed;
+# kept ignored in case of leftovers on already-installed machines)
+cache/
+*.cache
+
+# Logs
+logs/*
+!logs/.gitkeep
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+~$*
+
+# Local configuration
+config.local.ini
