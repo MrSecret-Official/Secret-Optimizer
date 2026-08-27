@@ -12,7 +12,10 @@ if %errorlevel% neq 0 (
     exit /b
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "& ([ScriptBlock]::Create((Get-Content -LiteralPath '%~f0' -Raw)))"
+set "OPT_SOURCE_DIR=%~dp0"
+if "%OPT_SOURCE_DIR:~-1%"=="\" set "OPT_SOURCE_DIR=%OPT_SOURCE_DIR:~0,-1%"
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$env:OPT_SOURCE_DIR='%OPT_SOURCE_DIR%'; & ([ScriptBlock]::Create((Get-Content -LiteralPath '%~f0' -Raw)))"
 exit /b %errorlevel%
 #>
 
@@ -165,9 +168,14 @@ if (-not (Test-Path $installDir)) { New-Item -ItemType Directory -Path $installD
 if (-not (Test-Path $toolsDir)) { New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null }
 if (-not (Test-Path "$installDir\logs")) { New-Item -ItemType Directory -Path "$installDir\logs" -Force | Out-Null }
 
-$localScriptRoot = $PSScriptRoot
-if (-not $localScriptRoot) {
-    $localScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$localScriptRoot = if ($env:OPT_SOURCE_DIR -and (Test-Path $env:OPT_SOURCE_DIR)) {
+    $env:OPT_SOURCE_DIR
+} elseif ($PSScriptRoot) {
+    $PSScriptRoot
+} elseif ($MyInvocation.MyCommand -and $MyInvocation.MyCommand.Path) {
+    Split-Path -Parent $MyInvocation.MyCommand.Path
+} else {
+    (Get-Location).Path
 }
 
 # Copy files from current project folder to installDir if different
