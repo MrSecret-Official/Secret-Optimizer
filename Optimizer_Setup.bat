@@ -147,6 +147,9 @@ Write-Host "${dimText}    controlled Windows bloatware remover, telemetry purge,
 Write-Host "${dimText}  - Install location: ${reset}${creamyCyan}$installDir${reset}"
 Write-Host "${dimText}    (added to user PATH; desktop shortcut is created: Secret-Optimizer.lnk).${reset}"
 Write-Host ''
+Write-Host "${dimText}Every line of source is public - read it before you trust it:${reset}"
+Write-Host "${creamyCyan}$repoWeb${reset}"
+Write-Host ''
 Write-Host '============================================================================================='
 Write-Host ''
 Write-Host "Proceed with Secret-Optimizer setup and download? (Y/N)"
@@ -218,6 +221,23 @@ $activeNames = ($detectedAVs | Where-Object { $_.IsActive } | Select-Object -Exp
 if (-not $activeNames) { $activeNames = ($detectedAVs | Select-Object -ExpandProperty Name) -join ' ' }
 $isThirdParty = ($activeNames -match 'Avast|AVG|Kaspersky|Bitdefender|Norton|Symantec|McAfee|ESET|Malwarebytes|Sophos')
 
+# Skip the whole notice if this folder is already excluded from a previous run
+# (common on reinstalls/updates - no need to make the user click through it again).
+$alreadyExcluded = $false
+try {
+    $currentPrefs = Get-MpPreference -ErrorAction SilentlyContinue
+    if ($currentPrefs -and ($currentPrefs.ExclusionPath -contains $installDir)) {
+        $alreadyExcluded = $true
+    }
+} catch {}
+
+if ($alreadyExcluded) {
+    Write-Host ''
+    Write-Host "${creamyGreen}[OK] '$installDir' is already excluded in Windows Defender.${reset}"
+    Write-Host "${dimText}Proceeding to download and deployment...${reset}"
+    Start-Sleep -Milliseconds 800
+} else {
+
 Clear-Host
 Show-Banner
 Write-Host '============================================================================================='
@@ -246,7 +266,7 @@ Write-Host '====================================================================
 Write-Host ''
 Write-Host "Choose how to configure antivirus exclusions:"
 Write-Host "  ${creamyGreen}[1] Automatic Detection & Add Exclusion (Recommended for Windows Defender)${reset}"
-Write-Host "  ${accentBlue}[2] Manual Exclusion Guide (Step-by-step instructions for all AV engines)${reset}"
+Write-Host "  ${creamyCyan}[2] Manual Exclusion Guide (Step-by-step instructions for all AV engines)${reset}"
 Write-Host "  ${dimText}[3] Skip / No Exclusion (Proceed without modifying security settings)${reset}"
 Write-Host ''
 $avChoice = Read-Host "Select an option (1-3)"
@@ -344,11 +364,18 @@ elseif ($avChoice -eq '2') {
     Start-Sleep -Milliseconds 500
 }
 
+} # end of $alreadyExcluded else branch
+
 # -------------------------------------------------------------
-# STEP 3: CHECK REPOSITORY VERSION (GITHUB API)
+# STEP 3: CHECK REPOSITORY VERSION & START DOWNLOAD
 # -------------------------------------------------------------
+Clear-Host
+Show-Banner
+Write-Host '============================================================================================='
+Write-Host '                         DOWNLOADING & DEPLOYING SECRET-OPTIMIZER'
+Write-Host '============================================================================================='
 Write-Host ''
-Write-Host "${creamyCyan}Checking GitHub repository version ($repoWeb)...${reset}"
+Write-Host "${creamyCyan}[*] Checking GitHub repository ($repoWeb)...${reset}"
 $remoteSha = $null
 try {
     $commitInfo = Invoke-RestMethod -Uri "$repoApi/commits/main" -Headers $headers -Method Get -TimeoutSec 10 -ErrorAction SilentlyContinue
@@ -356,6 +383,12 @@ try {
         $remoteSha = $commitInfo.sha
     }
 } catch {}
+
+if (-not $remoteSha) {
+    Write-Host "${creamyRed}[WARN] Could not reach GitHub to check for updates.${reset}"
+    Write-Host "${creamyYellow}       GitHub limits unauthenticated requests to 60/hour per IP address - if several${reset}"
+    Write-Host "${creamyYellow}       installs happened from this network recently, wait a bit and try again.${reset}"
+}
 
 $localSha = ''
 if (Test-Path $versionFile) { $localSha = (Get-Content $versionFile -Raw -ErrorAction SilentlyContinue).Trim() }
