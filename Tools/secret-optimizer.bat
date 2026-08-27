@@ -629,7 +629,8 @@ function Assistant-ContinuousGuard {
 # ===================================================================
 $safeBloatwareRules = @(
     @{ Name = "Microsoft.BingNews"; Description = "Microsoft News & Feed" }
-    @{ Name = "Microsoft.BingWeather"; Description = "Bing Weather Widget & App" }
+    @{ Name = "Microsoft.BingWeather"; Description = "Bing Weather App & Widget" }
+    @{ Name = "MicrosoftWindows.Client.WebExperience"; Description = "Windows 11 Widgets Board & Weather Feed (WebExperience)" }
     @{ Name = "Microsoft.BingFinance"; Description = "Bing Money & Finance" }
     @{ Name = "Microsoft.BingSports"; Description = "Bing Sports" }
     @{ Name = "Microsoft.Windows.Ai.Copilot.Provider"; Description = "Windows Copilot AI Provider" }
@@ -880,15 +881,31 @@ function Invoke-SmartJunkDisable([string]$id) {
     switch ($id) {
         'Widgets' {
             Get-Process -Name 'Widgets','WidgetService' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            Get-AppxPackage -Name '*WebExperience*' -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue
+            Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object DisplayName -like '*WebExperience*' | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Out-Null
+
             $k1 = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
             if (-not (Test-Path $k1)) { New-Item -Path $k1 -Force | Out-Null }
             Set-ItemProperty -Path $k1 -Name "TaskbarDa" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+            Set-ItemProperty -Path $k1 -Name "TaskbarMn" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+
             $k2 = "HKCU:\Software\Policies\Microsoft\Dsh"
             if (-not (Test-Path $k2)) { New-Item -Path $k2 -Force | Out-Null }
             Set-ItemProperty -Path $k2 -Name "AllowNewsAndInterests" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+
+            $k2b = "HKLM:\SOFTWARE\Policies\Microsoft\Dsh"
+            if (-not (Test-Path $k2b)) { New-Item -Path $k2b -Force | Out-Null }
+            Set-ItemProperty -Path $k2b -Name "AllowNewsAndInterests" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+
             $k3 = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds"
             if (-not (Test-Path $k3)) { New-Item -Path $k3 -Force | Out-Null }
             Set-ItemProperty -Path $k3 -Name "ShellFeedsTaskbarViewMode" -Value 2 -Type DWord -Force -ErrorAction SilentlyContinue
+
+            $k4 = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds"
+            if (-not (Test-Path $k4)) { New-Item -Path $k4 -Force | Out-Null }
+            Set-ItemProperty -Path $k4 -Name "EnableFeeds" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+
+            Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
         }
         'Copilot' {
             Get-Process -Name 'Copilot','Microsoft.Copilot' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -1123,6 +1140,10 @@ function Assistant-ApplyTelemetryRegistry {
         if (-not (Test-Path $feedsKey)) { New-Item -Path $feedsKey -Force | Out-Null }
         Set-ItemProperty -Path $feedsKey -Name "ShellFeedsTaskbarViewMode" -Value 2 -Type DWord -Force -ErrorAction SilentlyContinue
 
+        $winFeedsKey = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds"
+        if (-not (Test-Path $winFeedsKey)) { New-Item -Path $winFeedsKey -Force | Out-Null }
+        Set-ItemProperty -Path $winFeedsKey -Name "EnableFeeds" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+
         # 7. Block Windows from automatically downloading consumer bloat & suggested apps in the background
         $cloudUser = "HKCU:\Software\Policies\Microsoft\Windows\CloudContent"
         if (-not (Test-Path $cloudUser)) { New-Item -Path $cloudUser -Force | Out-Null }
@@ -1131,6 +1152,8 @@ function Assistant-ApplyTelemetryRegistry {
         $cloudMachine = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent"
         if (-not (Test-Path $cloudMachine)) { New-Item -Path $cloudMachine -Force | Out-Null }
         Set-ItemProperty -Path $cloudMachine -Name "DisableWindowsConsumerFeatures" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+
+        Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
 
         Write-Host "${creamyGreen}[OK] Privacy, telemetry, Copilot, Widgets/Weather, and auto-download blocks applied.${reset}"
         Write-AssistantLog "TelemetryDebloat" "SUCCESS" "Disabled telemetry, Copilot, Widgets/Weather feeds and background promo apps"
