@@ -629,9 +629,11 @@ function Assistant-ContinuousGuard {
 # ===================================================================
 $safeBloatwareRules = @(
     @{ Name = "Microsoft.BingNews"; Description = "Microsoft News & Feed" }
-    @{ Name = "Microsoft.BingWeather"; Description = "Bing Weather Widget" }
+    @{ Name = "Microsoft.BingWeather"; Description = "Bing Weather Widget & App" }
     @{ Name = "Microsoft.BingFinance"; Description = "Bing Money & Finance" }
     @{ Name = "Microsoft.BingSports"; Description = "Bing Sports" }
+    @{ Name = "Microsoft.Windows.Ai.Copilot.Provider"; Description = "Windows Copilot AI Provider" }
+    @{ Name = "Microsoft.Copilot"; Description = "Microsoft Copilot App" }
     @{ Name = "Microsoft.WindowsFeedbackHub"; Description = "Feedback Hub Telemetry" }
     @{ Name = "Microsoft.GetHelp"; Description = "Get Help Online Assistant" }
     @{ Name = "Microsoft.Getstarted"; Description = "Tips / Welcome Promo App" }
@@ -865,6 +867,7 @@ function Assistant-InteractiveAppxManager {
 # (OneDrive sync, Edge background mode), so they require an explicit pick.
 $smartJunkCatalog = @(
     [PSCustomObject]@{ Id = 'Widgets';   Display = 'Windows Widgets / News & Interests';      Processes = @('Widgets','WidgetService');                          Category = 'Windows Bloat';       Safe = $true }
+    [PSCustomObject]@{ Id = 'Copilot';   Display = 'Windows Copilot (AI background provider & taskbar)'; Processes = @('Copilot','Microsoft.Copilot');            Category = 'Windows Bloat';       Safe = $true }
     [PSCustomObject]@{ Id = 'GameBar';   Display = 'Xbox Game Bar overlay & presence writer';  Processes = @('GameBar','GameBarFTServer','GameBarPresenceWriter'); Category = 'Windows Bloat';       Safe = $true }
     [PSCustomObject]@{ Id = 'YourPhone'; Display = 'Phone Link / Your Phone companion app';    Processes = @('YourPhone','PhoneExperienceHost');                  Category = 'Windows Bloat';       Safe = $true }
     [PSCustomObject]@{ Id = 'CompatTel'; Display = 'Microsoft Compatibility Telemetry';        Processes = @('CompatTelRunner','DeviceCensus');                   Category = 'Windows Telemetry';   Safe = $true }
@@ -883,6 +886,23 @@ function Invoke-SmartJunkDisable([string]$id) {
             $k2 = "HKCU:\Software\Policies\Microsoft\Dsh"
             if (-not (Test-Path $k2)) { New-Item -Path $k2 -Force | Out-Null }
             Set-ItemProperty -Path $k2 -Name "AllowNewsAndInterests" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+            $k3 = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds"
+            if (-not (Test-Path $k3)) { New-Item -Path $k3 -Force | Out-Null }
+            Set-ItemProperty -Path $k3 -Name "ShellFeedsTaskbarViewMode" -Value 2 -Type DWord -Force -ErrorAction SilentlyContinue
+        }
+        'Copilot' {
+            Get-Process -Name 'Copilot','Microsoft.Copilot' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            Get-AppxPackage -Name '*Copilot*' -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue
+            Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object DisplayName -like '*Copilot*' | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Out-Null
+            $cp1 = "HKCU:\Software\Policies\Microsoft\Windows\WindowsCopilot"
+            if (-not (Test-Path $cp1)) { New-Item -Path $cp1 -Force | Out-Null }
+            Set-ItemProperty -Path $cp1 -Name "TurnOffWindowsCopilot" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+            $cp2 = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot"
+            if (-not (Test-Path $cp2)) { New-Item -Path $cp2 -Force | Out-Null }
+            Set-ItemProperty -Path $cp2 -Name "TurnOffWindowsCopilot" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+            $cp3 = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
+            if (-not (Test-Path $cp3)) { New-Item -Path $cp3 -Force | Out-Null }
+            Set-ItemProperty -Path $cp3 -Name "ShowCopilotButton" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
         }
         'GameBar' {
             Get-Process -Name 'GameBar','GameBarFTServer','GameBarPresenceWriter' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -1050,14 +1070,18 @@ function Assistant-ApplyTelemetryRegistry {
         if (-not (Test-Path $advKey)) { New-Item -Path $advKey -Force | Out-Null }
         Set-ItemProperty -Path $advKey -Name "Enabled" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
 
-        # 3. Disable Start Menu Promoted Apps & Suggestions
+        # 3. Disable Start Menu Promoted Apps, Silent Downloads & Suggestions
         $cdmKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager"
         if (-not (Test-Path $cdmKey)) { New-Item -Path $cdmKey -Force | Out-Null }
         $props = @(
             'SystemPaneSuggestionsEnabled', 'SilentInstalledAppsEnabled',
+            'ContentDeliveryAllowed', 'OemPreInstalledAppsEnabled',
+            'PreInstalledAppsEnabled', 'PreInstalledAppsEverEnabled',
+            'SoftLandingEnabled', 'RotatingLockScreenEnabled',
+            'SubscribedContent-310093Enabled', 'SubscribedContent-338387Enabled',
             'SubscribedContent-338388Enabled', 'SubscribedContent-338389Enabled',
             'SubscribedContent-353694Enabled', 'SubscribedContent-353696Enabled',
-            'SubscribedContent-353698Enabled', 'RotatingLockScreenEnabled'
+            'SubscribedContent-353698Enabled'
         )
         foreach ($p in $props) {
             Set-ItemProperty -Path $cdmKey -Name $p -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
@@ -1068,8 +1092,48 @@ function Assistant-ApplyTelemetryRegistry {
         if (-not (Test-Path $expKey)) { New-Item -Path $expKey -Force | Out-Null }
         Set-ItemProperty -Path $expKey -Name "DisableSearchBoxSuggestions" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
 
-        Write-Host "${creamyGreen}[OK] Privacy, telemetry, and Start menu promotional registry settings optimized.${reset}"
-        Write-AssistantLog "TelemetryDebloat" "SUCCESS" "Disabled telemetry and Start menu promotional ads"
+        # 5. Disable Windows Copilot system-wide & hide taskbar button
+        $cpUser = "HKCU:\Software\Policies\Microsoft\Windows\WindowsCopilot"
+        if (-not (Test-Path $cpUser)) { New-Item -Path $cpUser -Force | Out-Null }
+        Set-ItemProperty -Path $cpUser -Name "TurnOffWindowsCopilot" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+
+        $cpMachine = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot"
+        if (-not (Test-Path $cpMachine)) { New-Item -Path $cpMachine -Force | Out-Null }
+        Set-ItemProperty -Path $cpMachine -Name "TurnOffWindowsCopilot" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+
+        $edgePolicy = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
+        if (-not (Test-Path $edgePolicy)) { New-Item -Path $edgePolicy -Force | Out-Null }
+        Set-ItemProperty -Path $edgePolicy -Name "HubsSidebarEnabled" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+
+        # 6. Disable Taskbar Widgets, Weather Feeds & News popups
+        $advExp = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
+        if (-not (Test-Path $advExp)) { New-Item -Path $advExp -Force | Out-Null }
+        Set-ItemProperty -Path $advExp -Name "TaskbarDa" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+        Set-ItemProperty -Path $advExp -Name "ShowCopilotButton" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+
+        $dshUser = "HKCU:\Software\Policies\Microsoft\Dsh"
+        if (-not (Test-Path $dshUser)) { New-Item -Path $dshUser -Force | Out-Null }
+        Set-ItemProperty -Path $dshUser -Name "AllowNewsAndInterests" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+
+        $dshMachine = "HKLM:\SOFTWARE\Policies\Microsoft\Dsh"
+        if (-not (Test-Path $dshMachine)) { New-Item -Path $dshMachine -Force | Out-Null }
+        Set-ItemProperty -Path $dshMachine -Name "AllowNewsAndInterests" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+
+        $feedsKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds"
+        if (-not (Test-Path $feedsKey)) { New-Item -Path $feedsKey -Force | Out-Null }
+        Set-ItemProperty -Path $feedsKey -Name "ShellFeedsTaskbarViewMode" -Value 2 -Type DWord -Force -ErrorAction SilentlyContinue
+
+        # 7. Block Windows from automatically downloading consumer bloat & suggested apps in the background
+        $cloudUser = "HKCU:\Software\Policies\Microsoft\Windows\CloudContent"
+        if (-not (Test-Path $cloudUser)) { New-Item -Path $cloudUser -Force | Out-Null }
+        Set-ItemProperty -Path $cloudUser -Name "DisableWindowsConsumerFeatures" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+
+        $cloudMachine = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent"
+        if (-not (Test-Path $cloudMachine)) { New-Item -Path $cloudMachine -Force | Out-Null }
+        Set-ItemProperty -Path $cloudMachine -Name "DisableWindowsConsumerFeatures" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+
+        Write-Host "${creamyGreen}[OK] Privacy, telemetry, Copilot, Widgets/Weather, and auto-download blocks applied.${reset}"
+        Write-AssistantLog "TelemetryDebloat" "SUCCESS" "Disabled telemetry, Copilot, Widgets/Weather feeds and background promo apps"
     } catch {
         Write-Host "${creamyRed}[WARN] Some registry settings could not be updated: $($_.Exception.Message)${reset}"
     }
